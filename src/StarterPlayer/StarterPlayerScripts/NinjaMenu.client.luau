@@ -1,4 +1,4 @@
--- NinjaMenu v1.5  (LocalScript in StarterPlayerScripts)
+-- NinjaMenu v1.6  (LocalScript in StarterPlayerScripts)
 -- The MENU button (bottom left, or M) opens a panel: pick your character (NinjaRoster), switch
 -- Golden Weapons on and off (several at once), spawn the Tornado of Creation crew as bots and
 -- training dummies (normal / infinite HP), and Duels: two NPCs clashing beams (you pick who
@@ -34,7 +34,10 @@ local ELEMENT_COLORS = {
 	Fire = Color3.fromRGB(255, 120, 40), Earth = Color3.fromRGB(205, 150, 80), Lightning = Color3.fromRGB(90, 190, 255),
 	Ice = Color3.fromRGB(190, 235, 255), Energy = Color3.fromRGB(110, 230, 90), Water = Color3.fromRGB(60, 200, 220),
 }
-local WEAPON_ORDER = { "Sword", "Scythe", "Nunchucks", "Shurikens", "PauseBlade" }
+local WEAPON_ORDER = {}
+for _, kind in ipairs({ "Sword", "Scythe", "Nunchucks", "Shurikens", "PauseBlade" }) do
+	if not GoldenWeapons.Weapons[kind].Hidden then table.insert(WEAPON_ORDER, kind) end -- (Hidden = parked)
+end
 local GOLDEN = { "Sword", "Scythe", "Nunchucks", "Shurikens" } -- what "All" gives
 local OWNER = {} -- weapon kind -> element that owns it
 for element, kind in pairs(GoldenWeapons.ByElement) do OWNER[kind] = element end

@@ -1,4 +1,4 @@
--- GoldenWeaponsServer v8.0  (Script in ServerScriptService)
+-- GoldenWeaponsServer v8.1  (Script in ServerScriptService)
 -- Gives every player the Golden Weapon of their element on spawn (slot 1) and swaps it when
 -- they switch element: Lightning = Nunchucks of Lightning, Fire = Sword of Fire,
 -- Earth = Scythe of Quakes, Ice = Shurikens of Ice. The menu can hand out several at once (player
@@ -1260,7 +1260,8 @@ local function wantedWeapons(player)
 		if own then table.insert(list, own) end
 	elseif attr ~= "None" then
 		for kind in attr:gmatch("[^,]+") do
-			if GoldenWeapons.Weapons[kind] and not table.find(list, kind) then table.insert(list, kind) end
+			local W = GoldenWeapons.Weapons[kind]
+			if W and not W.Hidden and not table.find(list, kind) then table.insert(list, kind) end
 		end
 		local i = table.find(list, own)
 		if i and i > 1 then table.insert(list, 1, table.remove(list, i)) end

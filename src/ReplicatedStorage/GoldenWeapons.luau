@@ -1,4 +1,4 @@
--- GoldenWeapons v8.0  (ModuleScript in ReplicatedStorage)
+-- GoldenWeapons v8.1  (ModuleScript in ReplicatedStorage)
 -- Shared settings + the client side of the Golden Weapons. Each element has its own weapon
 -- (ByElement); switching element (E) swaps it.
 -- Nunchucks of Lightning (moves copied from the reference video):
@@ -244,6 +244,7 @@ end
 -- Pause (red): stops time
 GoldenWeapons.PauseBlade = timeBlade("Pause Time Blade", Color3.fromRGB(255, 40, 40), "Pause")
 local PB = GoldenWeapons.PauseBlade
+PB.Hidden = true -- parked for now: not in the menu, never handed out (flip to bring it back)
 -- key, what it's called, cooldown (seconds), arm move while casting (+ how long it takes)
 PB.Abilities = {
 	{ id = "Stop",  key = "F", name = "Time Stop",     cooldown = 12, move = "raise", moveTime = 0.6 },
