@@ -1,4 +1,4 @@
--- GoldenWeapons v6.1  (ModuleScript in ReplicatedStorage)
+-- GoldenWeapons v6.2  (ModuleScript in ReplicatedStorage)
 -- Shared settings + the client side of the Golden Weapons. Each element has its own weapon
 -- (ByElement); switching element (E) swaps it.
 -- Nunchucks of Lightning (moves copied from the reference video):
@@ -8,9 +8,11 @@
 --                -> two-handed low sweep (switches hands, big knockback)
 -- The second stick is driven by code on every client (a spring that chases where it should
 -- be), so it whips with weight but never flops around. NinjaAnimator calls Step() every frame.
--- Sword of Fire + Scythe of Quakes: two-handed. Keyframes move the weapon itself (in front of
---   the upper body) and both arms reach for its handle (IK from the character's own arm joints).
---   Sword combo: slash -> backslash -> overhead chop -> spin slash (fire burst, sets them on fire)
+-- Sword of Fire + Scythe of Quakes: keyframes move the weapon itself (around the upper body) and
+--   the arms reach for its handle (IK from the character's own arm joints). The left hand joins
+--   in where a keyframe says so (the scythe always uses both hands).
+--   Sword: held up in the right hand, out to the side. Combo: down to the left (two hands)
+--   -> back up -> rising from low right to high left -> top-down finisher (fire burst, sets them on fire)
 --   Scythe combo: reap -> reap back -> spin -> slam (quake: shockwave + rocks around the impact)
 -- Shurikens of Ice: one in each hand, click throws them where you aim (alternating hands,
 --   4th throw = both). A hit freezes the target. The server does the flying + hits.
@@ -100,10 +102,10 @@ GoldenWeapons.Sword = {
 	BurnTime = 1.5,               -- the final hit sets them on fire (just the look)
 	ComboWindow = 1.4,
 	Swings = {
-		{ name = "slash",     time = 0.45, damage = 11, hitAt = 0.5,  range = 6, knock = 20 },
-		{ name = "backslash", time = 0.45, damage = 11, hitAt = 0.5,  range = 6, knock = 20 },
-		{ name = "chop",      time = 0.6,  damage = 15, hitAt = 0.6,  range = 6, knock = 16, up = 26 },
-		{ name = "spinSlash", time = 0.9,  damage = 24, hitAt = 0.62, range = 8, knock = 45, up = 18, around = true, final = true, burst = true, spin = true },
+		{ name = "downLeft", time = 0.5,  damage = 11, hitAt = 0.5,  range = 6, knock = 18 },
+		{ name = "returnUp", time = 0.45, damage = 11, hitAt = 0.45, range = 6, knock = 18, up = 14 },
+		{ name = "riseLeft", time = 0.5,  damage = 13, hitAt = 0.55, range = 6, knock = 16, up = 30 },
+		{ name = "topDown",  time = 0.65, damage = 24, hitAt = 0.6,  range = 7, reach = 4, knock = 40, up = 10, final = true, burst = true },
 	},
 	Draw = { name = "draw", time = 0.9, grabAt = 0.4 }, -- reach over the shoulder and pull it off your back
 	Sounds = {
@@ -316,36 +318,40 @@ end
 -- two-handed keyframes: they place the WEAPON in UpperTorso space (+x right, +y up,
 -- -z forward), both arms then reach for it. Worked out against the R15 arm so neither the
 -- weapon nor the hands go through the body.
---   wkey(e reached at, right hand, toward the tip, way the edge/blade faces, upper body turn)
+--   wkey(e reached at, right hand, toward the tip, way the edge/blade faces, upper body turn,
+--        left hand on the handle 0/1 (default 1))
 ----------------------------------------------------------------------------------------
 local V = Vector3.new
-local function wkey(e, grip, dir, edgeWay, waist)
+local function wkey(e, grip, dir, edgeWay, waist, left)
 	local d = dir.Unit
 	local edge = (edgeWay - d * edgeWay:Dot(d)).Unit
-	return { e = e, cf = CFrame.fromMatrix(grip, d:Cross(edge), d), waist = waist or CFrame.identity }
+	return { e = e, cf = CFrame.fromMatrix(grip, d:Cross(edge), d), waist = waist or CFrame.identity, left = left or 1 }
 end
 
-S.Idle = wkey(0, V(0.05, -0.15, -0.95), V(-0.3, 0.9, -0.3), V(-0.2, -0.3, -1)) -- Kai: hands at the chest, blade up
-local chopDown = { V(0.05, -0.55, -1.15), V(0, -0.35, -0.94), V(0, -1, 0.3) }
+-- ready: right hand out to the side at chest height, blade up (left arm free)
+S.Idle = wkey(0, V(1.55, -0.4, -0.5), V(0.35, 0.92, 0.15), V(0, 0, -1), nil, 0)
+local downEnd = wkey(1, V(0.1, -0.6, -1.0), V(-0.7, -0.6, -0.3), V(-0.5, -0.7, 0.4), R(-0.15, 0.6, 0), 1)
+local riseEnd = wkey(1, V(-0.3, 0.9, -0.8), V(-0.6, 0.7, 0.3), V(-0.6, 0.6, 0.4), R(0, 0.5, 0), 0)
+local topDownEnd = { V(0.05, -0.55, -1.15), V(0, -0.35, -0.94), V(0, -1, 0.3) }
 S.Moves = {
-	slash = { -- right -> left
-		wkey(0.3, V(0.3, 0, -0.85), V(0.65, 0.6, 0.45), V(-0.7, 0, -0.7), R(0, -0.5, 0)),
-		wkey(0.55, V(-0.05, -0.4, -1.1), V(-0.45, 0.05, -0.9), V(-1, 0, 0)),
-		wkey(1, V(-0.3, -0.5, -0.95), V(-0.95, -0.1, 0.3), V(-0.3, 0, 1), R(0, 0.6, 0)),
+	downLeft = { -- up over the right shoulder, then down to the lower left; left hand joins in
+		wkey(0.3, V(0.7, 0.8, -0.7), V(0.55, 0.75, 0.35), V(-0.6, -0.6, -0.5), R(0, -0.3, 0), 1),
+		wkey(0.55, V(0.15, -0.35, -1.1), V(-0.55, -0.25, -0.8), V(-0.6, -0.7, 0), R(-0.1, 0.4, 0), 1),
+		downEnd,
 	},
-	backslash = { -- left -> right
-		wkey(0.3, V(-0.25, 0, -0.85), V(-0.65, 0.6, 0.45), V(0.7, 0, -0.7), R(0, 0.5, 0)),
-		wkey(0.55, V(0.1, -0.4, -1.1), V(0.45, 0.05, -0.9), V(1, 0, 0)),
-		wkey(1, V(0.35, -0.5, -0.95), V(0.95, -0.1, 0.3), V(0.3, 0, 1), R(0, -0.6, 0)),
+	returnUp = { -- one hand again, back up to where it was
+		wkey(0.5, V(0.45, -0.4, -1.1), V(0.6, 0.4, -0.7), V(1, 0.6, 0), R(0, -0.1, 0), 0),
+		wkey(1, V(1.55, -0.4, -0.5), V(0.35, 0.92, 0.15), V(0, 0, -1), nil, 0),
 	},
-	chop = { -- up above the head, then straight down in front
-		wkey(0.4, V(0.05, 1.55, -0.8), V(0, 0.75, 0.66), V(0, 0.3, -1), R(0.15, 0, 0)),
-		wkey(0.65, chopDown[1], chopDown[2], chopDown[3], R(-0.3, 0, 0)),
-		wkey(1, chopDown[1], chopDown[2], chopDown[3], R(-0.25, 0, 0)),
+	riseLeft = { -- down low on the right, then up across to high on the left
+		wkey(0.3, V(1.3, -0.7, -0.8), V(0.3, -0.7, -0.65), V(-0.6, 0.7, 0), R(0, -0.4, 0), 0),
+		wkey(0.6, V(0, 0, -1.1), V(-0.3, 0.6, -0.75), V(-1, 0.8, 0), R(0, 0.2, 0), 0),
+		riseEnd,
 	},
-	spinSlash = { -- blade level out to the right, the whole body spins once
-		wkey(0.15, V(0.2, -0.4, -1.0), V(0.95, 0, -0.3), V(0, 0, -1)),
-		wkey(1, V(0.2, -0.4, -1.0), V(0.95, 0, -0.3), V(0, 0, -1)),
+	topDown = { -- both hands, up above the head, then straight down in front
+		wkey(0.35, V(0.05, 1.6, -1.0), V(0, 0.85, 0.5), V(0, 0.3, -1), R(0.15, 0, 0), 1),
+		wkey(0.6, topDownEnd[1], topDownEnd[2], topDownEnd[3], R(-0.3, 0, 0), 1),
+		wkey(1, topDownEnd[1], topDownEnd[2], topDownEnd[3], R(-0.25, 0, 0), 1),
 	},
 }
 
@@ -373,13 +379,14 @@ SC.Moves = {
 	},
 }
 
+local function blendKey(a, b, s)
+	return { cf = a.cf:Lerp(b.cf, s), waist = a.waist:Lerp(b.waist, s), left = lerp(a.left, b.left, s) }
+end
+
 local function weaponKey(W, kind, e, from)
 	local prevE, prev = 0, from
 	for _, k in ipairs(W.Moves[kind] or {}) do
-		if e <= k.e then
-			local s = smooth((e - prevE) / math.max(k.e - prevE, 1e-3))
-			return { cf = prev.cf:Lerp(k.cf, s), waist = prev.waist:Lerp(k.waist, s) }
-		end
+		if e <= k.e then return blendKey(prev, k, smooth((e - prevE) / math.max(k.e - prevE, 1e-3))) end
 		prevE, prev = k.e, k
 	end
 	return prev
@@ -645,7 +652,7 @@ local function meleeStep(W, tool, character, pose, dt, armsFree)
 		-- ease back into the ready stance
 		st.recover += dt
 		local s = smooth(st.recover / 0.4)
-		key = { cf = st.recoverFrom.cf:Lerp(W.Idle.cf, s), waist = st.recoverFrom.waist:Lerp(CFrame.identity, s) }
+		key = blendKey(st.recoverFrom, W.Idle, s)
 		if s >= 1 then st.recoverFrom = nil end
 	end
 	st.key = key
@@ -659,10 +666,14 @@ local function meleeStep(W, tool, character, pose, dt, armsFree)
 		local qR, eR = solveArm(right, grip - (grip - right.S).Unit * 0.2, POLE_R)
 		local palm = handCF(right, qR, eR) * GoldenWeapons.Palm
 		local wcf = CFrame.new(palm.Position) * cf.Rotation -- weapon where the hand really ends up
-		local leftGrip = wcf * V(0, -W.LeftGap, 0)
-		local qL, eL = solveArm(left, leftGrip - (leftGrip - left.S).Unit * 0.2, POLE_L)
 		out.RightShoulder, out.RightElbow = qR, R(eR, 0, 0)
-		out.LeftShoulder, out.LeftElbow = qL, R(eL, 0, 0)
+		if key.left > 0.01 then
+			-- left hand onto the handle (blends in/out as it joins or lets go)
+			local leftGrip = wcf * V(0, -W.LeftGap, 0)
+			local qL, eL = solveArm(left, leftGrip - (leftGrip - left.S).Unit * 0.2, POLE_L)
+			out.LeftShoulder = (out.LeftShoulder or CFrame.identity):Lerp(qL, key.left)
+			out.LeftElbow = (out.LeftElbow or CFrame.identity):Lerp(R(eL, 0, 0), key.left)
+		end
 		out.Waist = key.waist * (out.Waist or CFrame.identity)
 		target = joint.C0:Inverse() * palm:Inverse() * wcf
 	end

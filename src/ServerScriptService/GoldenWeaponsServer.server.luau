@@ -1,4 +1,4 @@
--- GoldenWeaponsServer v6.0  (Script in ServerScriptService)
+-- GoldenWeaponsServer v6.1  (Script in ServerScriptService)
 -- Gives every player the Golden Weapon of their element on spawn (slot 1) and swaps it when
 -- they switch element: Lightning = Nunchucks of Lightning, Fire = Sword of Fire,
 -- Earth = Scythe of Quakes, Ice = Shurikens of Ice. When not equipped it sits on your back.
@@ -344,10 +344,10 @@ end
 -- tools
 ----------------------------------------------------------------------------------------
 
--- fire burst around you (Sword of Fire's spin slash)
-local function fireBurst(root)
+-- fire burst where the Sword of Fire's finisher lands
+local function fireBurst(pos)
 	local a = Instance.new("Attachment")
-	a.Parent = root
+	a.Parent = fxAnchor(pos, 1.5)
 	local pe = Instance.new("ParticleEmitter")
 	pe.Texture = "rbxasset://textures/particles/fire_main.dds"
 	pe.Color = ColorSequence.new(S.FlameColor, S.FlameColor2)
@@ -464,7 +464,9 @@ local function hookCombo(tool, W, handle)
 			if tool.Parent ~= character then return end
 			if swing.quake then quake(character, swing) else doHit(W, character, swing) end
 			local root = character:FindFirstChild("HumanoidRootPart")
-			if swing.burst and root then fireBurst(root) end
+			if swing.burst and root then
+				fireBurst(swing.around and root.Position or root.Position + root.CFrame.LookVector * (swing.reach or 3))
+			end
 		end)
 	end)
 end
