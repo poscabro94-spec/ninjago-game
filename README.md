@@ -28,7 +28,7 @@ The cut points (in seconds) go in `tools/spinjitzu-cuts.csv`: `ClipStart` (wind-
 
 ## The Rising Dragon (`tools/dragon/`)
 
-The dragon is built from plain parts (chunky see-through glowing blocks with bright edges, white glow inside). Its shapes live in `tools/dragon/rock.py` (head, jaw, neck, chest blocks) and `geometry.py` (wing outline + where everything sits), and `build.py` writes them into `src/ReplicatedStorage/DragonModel.luau` (don't edit that file by hand). `python rock.py out` renders the head, `python rockscene.py out` the whole dragon on a stand-in character (hovering + flying), placed the way the game does it. Needs Python 3 with numpy + Pillow.
+The dragon is built from plain parts: flat see-through glowing facets with thick bright outlines, one tall column behind you (faceted head on top, chevron-plated neck, body and tail down your back) with flat bat wings out to the sides. Its shapes live in `tools/dragon/facet.py` and `build.py` writes them into `src/ReplicatedStorage/DragonModel.luau` (don't edit that file by hand). `python facet.py out` renders it on a stand-in character, placed the way the game does it. Needs Python 3 with numpy + Pillow.
 
 ## Syncing with Studio
 
