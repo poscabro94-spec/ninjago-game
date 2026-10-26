@@ -1,4 +1,4 @@
--- GoldenWeapons v5.0  (ModuleScript in ReplicatedStorage)
+-- GoldenWeapons v6.0  (ModuleScript in ReplicatedStorage)
 -- Shared settings + the client side of the Golden Weapons. Each element has its own weapon
 -- (ByElement); switching element (E) swaps it.
 -- Nunchucks of Lightning (moves copied from the reference video):
@@ -8,9 +8,13 @@
 --                -> two-handed low sweep (switches hands, big knockback)
 -- The second stick is driven by code on every client (a spring that chases where it should
 -- be), so it whips with weight but never flops around. NinjaAnimator calls Step() every frame.
--- Sword of Fire: held at an angle in the fist so the blade extends the arm, flames along the blade.
---   click combo: slash -> backslash -> overhead chop -> spin slash (fire burst, sets them on fire)
---   Placeholder sword built from parts until a "SwordOfFire" model is imported.
+-- Sword of Fire + Scythe of Quakes: two-handed. Keyframes move the weapon itself (in front of
+--   the upper body) and both arms reach for its handle (IK from the character's own arm joints).
+--   Sword combo: slash -> backslash -> overhead chop -> spin slash (fire burst, sets them on fire)
+--   Scythe combo: reap -> reap back -> spin -> slam (quake: shockwave + rocks around the impact)
+-- Shurikens of Ice: one in each hand, click throws them where you aim (alternating hands,
+--   4th throw = both). A hit freezes the target. The server does the flying + hits.
+-- Weapons without an imported model are placeholders built from blocks.
 
 local Players = game:GetService("Players")
 
@@ -65,16 +69,21 @@ local N = GoldenWeapons.Nunchucks
 GoldenWeapons.Sword = {
 	ToolName = "Sword of Fire",
 	HolsterName = "SwordHolster",
-	ModelName = "SwordOfFire",    -- imported model (one MeshPart) in ReplicatedStorage; placeholder without it
-	Length = 3.9,                 -- studs, the imported model is scaled to this
+	ModelName = "SwordOfFire",    -- imported model in ReplicatedStorage (biggest part = the sword,
+	                              -- other parts in it, e.g. red eye dots, keep their colour); placeholder without it
+	Length = 5,                   -- studs, the imported model is scaled to this
 	FlipModel = false,            -- imported model held by the wrong end? set true
-	GripFromEnd = 0.45,           -- where the hand holds it, studs from the hilt end
-	HiltLength = 1.0,             -- studs from the hilt end to where the blade starts
+	FlipEdge = false,             -- edge facing the wrong way? set true (turns it around the blade)
+	GripFromEnd = 0.6,            -- where the right hand holds it, studs from the hilt end
+	LeftGap = 0.45,               -- the left hand holds it this far below the right hand
+	HiltLength = 1.2,             -- studs from the hilt end to where the blade starts
+	BackGrip = Vector3.new(0.55, 1.05, 0.65), -- on your back: hilt over the right shoulder
+	BackAngle = math.pi - 0.6,
 	-- placeholder sword
 	BladeLength = 2.8,
 	BladeWidth = 0.4,
 	BladeThickness = 0.1,
-	GripLength = 0.8,
+	GripLength = 1.0,
 	GripColor = Color3.fromRGB(150, 30, 15),
 	Color = Color3.fromRGB(235, 178, 25),
 	Material = Enum.Material.Metal,
@@ -94,7 +103,7 @@ GoldenWeapons.Sword = {
 		{ name = "slash",     time = 0.45, damage = 11, hitAt = 0.5,  range = 6, knock = 20 },
 		{ name = "backslash", time = 0.45, damage = 11, hitAt = 0.5,  range = 6, knock = 20 },
 		{ name = "chop",      time = 0.6,  damage = 15, hitAt = 0.6,  range = 6, knock = 16, up = 26 },
-		{ name = "spinSlash", time = 0.9,  damage = 24, hitAt = 0.62, range = 8, knock = 45, up = 18, around = true, final = true, burst = true },
+		{ name = "spinSlash", time = 0.9,  damage = 24, hitAt = 0.62, range = 8, knock = 45, up = 18, around = true, final = true, burst = true, spin = true },
 	},
 	Draw = { name = "draw", time = 0.9, grabAt = 0.4 }, -- reach over the shoulder and pull it off your back
 	Sounds = {
@@ -105,9 +114,91 @@ GoldenWeapons.Sword = {
 }
 local S = GoldenWeapons.Sword
 
-GoldenWeapons.Weapons = { Nunchucks = N, Sword = S }
--- element -> weapon (elements not listed get none). Still to come: Earth = Scythe, Ice = Shurikens
-GoldenWeapons.ByElement = { Lightning = "Nunchucks", Fire = "Sword" }
+GoldenWeapons.Scythe = {
+	ToolName = "Scythe of Quakes",
+	HolsterName = "ScytheHolster",
+	ModelName = "ScytheOfQuakes", -- imported model (biggest part = the scythe); placeholder blocks without it
+	Length = 5.5,                 -- studs along the shaft
+	FlipModel = false,            -- held by the blade end? set true
+	FlipEdge = false,             -- blade pointing backwards? set true
+	GripFromEnd = 0.5,            -- right hand, studs from the bottom of the shaft
+	LeftGap = 0.35,               -- left hand just below it
+	HiltLength = 4.4,             -- the blade starts this far up the shaft
+	BackGrip = Vector3.new(-0.6, -1.3, 0.7), -- on your back: blade up behind the right shoulder
+	BackAngle = -0.52,
+	-- placeholder
+	ShaftThickness = 0.22,
+	BladeLength = 2.2,
+	BladeWidth = 0.45,
+	BladeThickness = 0.1,
+	Color = Color3.fromRGB(235, 178, 25),
+	Material = Enum.Material.Metal,
+	Reflectance = 0.12,
+	TrailColor = Color3.fromRGB(255, 215, 120),
+	TrailColor2 = Color3.fromRGB(150, 95, 40),
+	HitColor = Color3.fromRGB(230, 150, 60),
+	HitTextColor = Color3.fromRGB(255, 205, 130),
+	QuakeRadius = 14,             -- the slam hits everyone this close to where it lands
+	QuakeColor = Color3.fromRGB(215, 150, 65),
+	RockColor = Color3.fromRGB(115, 82, 50),
+	ComboWindow = 1.5,
+	Swings = {
+		{ name = "reap",     time = 0.6, damage = 12, hitAt = 0.5,  range = 7.5, reach = 4, knock = 22 },
+		{ name = "reapBack", time = 0.6, damage = 12, hitAt = 0.5,  range = 7.5, reach = 4, knock = 22 },
+		{ name = "spin",     time = 0.9, damage = 16, hitAt = 0.6,  range = 9, knock = 34, up = 16, around = true, spin = true },
+		{ name = "slam",     time = 0.9, damage = 26, hitAt = 0.65, reach = 5.5, knock = 30, up = 45, final = true, quake = true },
+	},
+	Draw = { name = "draw", time = 0.9, grabAt = 0.4 },
+	Sounds = {
+		Swing = { "rbxassetid://9114276859", "rbxassetid://9114276862" },
+		Hit = { "rbxassetid://115899453415449", "rbxassetid://77794845234498" },
+		Final = "rbxassetid://73278613369675",
+	},
+}
+local SC = GoldenWeapons.Scythe
+
+GoldenWeapons.Shurikens = {
+	ToolName = "Shurikens of Ice",
+	HolsterName = "ShurikenHolster",
+	ModelName = "ShurikensOfIce", -- imported model of ONE shuriken (used for both + the thrown ones)
+	Size = 1.1,                   -- studs across
+	Thickness = 0.12,             -- placeholder
+	Color = Color3.fromRGB(235, 178, 25),
+	Material = Enum.Material.Metal,
+	Reflectance = 0.12,
+	IceColor = Color3.fromRGB(150, 225, 255),
+	TrailColor = Color3.fromRGB(215, 245, 255),
+	TrailColor2 = Color3.fromRGB(90, 180, 255),
+	HitColor = Color3.fromRGB(120, 210, 255),
+	HitTextColor = Color3.fromRGB(180, 235, 255),
+	Speed = 95,                   -- studs/s
+	Range = 130,                  -- studs before it shatters
+	HitRadius = 1.2,
+	FreezeTime = 1.2,             -- seconds a hit freezes them (can't move)
+	FinalFreezeTime = 2.2,
+	Reload = 0.7,                 -- seconds until a new one forms in the hand that threw
+	ComboWindow = 1.2,
+	Swings = {
+		{ name = "throwR",    time = 0.38, release = 0.5, damage = 9,  hands = { "R" } },
+		{ name = "throwL",    time = 0.38, release = 0.5, damage = 9,  hands = { "L" } },
+		{ name = "throwR",    time = 0.38, release = 0.5, damage = 9,  hands = { "R" } },
+		{ name = "throwBoth", time = 0.5,  release = 0.5, damage = 12, hands = { "R", "L" }, final = true },
+	},
+	Draw = { name = "draw", time = 0.6, grabAt = 0.35 },
+	Sounds = {
+		Swing = { "rbxassetid://9114276859", "rbxassetid://9114276862" },
+		Hit = { "rbxassetid://115899453415449", "rbxassetid://77794845234498" },
+		Final = "rbxassetid://73278613369675",
+	},
+}
+local K = GoldenWeapons.Shurikens
+
+-- in the hand: shuriken flat side out to the side, just below the fist (shuriken space: Y = flat side)
+GoldenWeapons.ShurikenHold = CFrame.new(0, -0.45, -0.1) * CFrame.Angles(0, 0, math.pi / 2)
+
+GoldenWeapons.Weapons = { Nunchucks = N, Sword = S, Scythe = SC, Shurikens = K }
+-- element -> weapon (elements not listed get none)
+GoldenWeapons.ByElement = { Lightning = "Nunchucks", Fire = "Sword", Earth = "Scythe", Ice = "Shurikens" }
 local TAU = math.pi * 2
 local rng = Random.new()
 
@@ -123,13 +214,13 @@ GoldenWeapons.HoldOffset = function(R0)
 	return CFrame.fromMatrix(Vector3.new(0, -0.25, -(half - 0.45)), Vector3.xAxis, Vector3.zAxis) * R0
 end
 
--- sword space: +Y toward the tip, X = the flat side. Part CFrame = sword CFrame * axis.
--- The blade leaves the fist at 60 degrees toward the fingers, so it carries on from the forearm.
-local SWORD_TILT = math.rad(60)
-GoldenWeapons.SwordHold = function(R0, gripY)
-	local blade = Vector3.new(0, -math.sin(SWORD_TILT), -math.cos(SWORD_TILT))
-	return CFrame.fromMatrix(Vector3.new(0, -0.2, 0), Vector3.xAxis, blade) * CFrame.new(0, -gripY, 0) * R0
-end
+-- two-handed weapons: weapon space has its origin at the right hand, +Y toward the tip,
+-- +Z = the way the edge (or the scythe blade) faces. Handle = invisible part at the palm.
+GoldenWeapons.Palm = CFrame.new(0, -0.2, 0)
+-- weapon in the hand when nothing else places it (other clients before Step runs, parkour):
+-- out of the fist, angled 60 degrees down the fingers
+GoldenWeapons.DefaultHold = CFrame.fromMatrix(Vector3.zero, Vector3.xAxis,
+	Vector3.new(0, -math.sin(math.rad(60)), -math.cos(math.rad(60))))
 
 ----------------------------------------------------------------------------------------
 -- arm poses (NinjaAnimator convention: +x swings a hanging arm forward,
@@ -221,55 +312,191 @@ local function swingDir(kind, e)
 	return "left"
 end
 
--- Sword: right shoulder + elbow keyframes (worked out for the 60 degree grip so the blade sweeps
--- through in front of you, edge first, without going through the body). Shoulders blend as
--- rotations, so the big angles in the follow-throughs are fine.
-local function key(x, y, z, el, waist) return { sh = R(x, y, z), el = el, waist = waist } end
-local SWORD_IDLE = key(-0.1, -0.2, -0.1, 1.8) -- ready stance: blade up and forward
-local SWORD_MOVES = {
-	-- { e this key is reached at, key }   (each move starts from wherever the arm was)
+----------------------------------------------------------------------------------------
+-- two-handed keyframes: they place the WEAPON in UpperTorso space (+x right, +y up,
+-- -z forward), both arms then reach for it. Worked out against the R15 arm so neither the
+-- weapon nor the hands go through the body.
+--   wkey(e reached at, right hand, toward the tip, way the edge/blade faces, upper body turn)
+----------------------------------------------------------------------------------------
+local V = Vector3.new
+local function wkey(e, grip, dir, edgeWay, waist)
+	local d = dir.Unit
+	local edge = (edgeWay - d * edgeWay:Dot(d)).Unit
+	return { e = e, cf = CFrame.fromMatrix(grip, d:Cross(edge), d), waist = waist or CFrame.identity }
+end
+
+S.Idle = wkey(0, V(0.05, -0.35, -1.0), V(0.05, 0.75, -0.65), V(0, -0.65, -0.75)) -- blade up and forward
+local chopDown = { V(0.05, -0.55, -1.15), V(0, -0.35, -0.94), V(0, -1, 0.3) }
+S.Moves = {
 	slash = { -- right -> left
-		{ 0.3, key(-0.2, -1.5, -0.9, 2.1, R(0, -0.4, 0)) },
-		{ 0.6, key(0.6, -1.3, -0.7, 0, R(0, 0.1, 0)) },
-		{ 1, key(2.4, 1.4, -1.3, 1.2, R(0, 0.5, 0)) },
+		wkey(0.3, V(0.3, 0, -0.85), V(0.65, 0.6, 0.45), V(-0.7, 0, -0.7), R(0, -0.5, 0)),
+		wkey(0.55, V(-0.05, -0.4, -1.1), V(-0.45, 0.05, -0.9), V(-1, 0, 0)),
+		wkey(1, V(-0.3, -0.5, -0.95), V(-0.95, -0.1, 0.3), V(-0.3, 0, 1), R(0, 0.6, 0)),
 	},
 	backslash = { -- left -> right
-		{ 0.3, key(0.4, 1.6, 0.4, 1.3, R(0, 0.5, 0)) },
-		{ 0.6, key(0.3, 1.3, 0.9, 0, R(0, -0.1, 0)) },
-		{ 1, key(3.2, -0.8, 2.0, 1.0, R(0, -0.5, 0)) },
+		wkey(0.3, V(-0.25, 0, -0.85), V(-0.65, 0.6, 0.45), V(0.7, 0, -0.7), R(0, 0.5, 0)),
+		wkey(0.55, V(0.1, -0.4, -1.1), V(0.45, 0.05, -0.9), V(1, 0, 0)),
+		wkey(1, V(0.35, -0.5, -0.95), V(0.95, -0.1, 0.3), V(0.3, 0, 1), R(0, -0.6, 0)),
 	},
-	chop = { -- up over the head, then straight down in front
-		{ 0.4, key(1.9, 0, 0, 1.7, R(0.15, 0, 0)) },
-		{ 0.65, key(1.0, 0, 0, 0, R(-0.3, 0, 0)) },
-		{ 1, key(1.0, 0, 0, 0, R(-0.25, 0, 0)) },
+	chop = { -- up above the head, then straight down in front
+		wkey(0.4, V(0.05, 1.55, -0.8), V(0, 0.75, 0.66), V(0, 0.3, -1), R(0.15, 0, 0)),
+		wkey(0.65, chopDown[1], chopDown[2], chopDown[3], R(-0.3, 0, 0)),
+		wkey(1, chopDown[1], chopDown[2], chopDown[3], R(-0.25, 0, 0)),
 	},
-	spinSlash = { -- arm out to the side, blade level, the whole body spins once
-		{ 0.15, key(0.1, -0.3, 1.1, 0.8, R(0, 0, 0)) },
-		{ 1, key(0.1, -0.3, 1.1, 0.8, R(0, 0, 0)) },
+	spinSlash = { -- blade level out to the right, the whole body spins once
+		wkey(0.15, V(0.2, -0.4, -1.0), V(0.95, 0, -0.3), V(0, 0, -1)),
+		wkey(1, V(0.2, -0.4, -1.0), V(0.95, 0, -0.3), V(0, 0, -1)),
 	},
 }
 
-local function blendKey(a, b, s)
-	return {
-		sh = a.sh:Lerp(b.sh, s),
-		el = lerp(a.el, b.el, s),
-		waist = (a.waist or CFrame.identity):Lerp(b.waist or CFrame.identity, s),
-	}
-end
+SC.Idle = wkey(0, V(0.1, -0.4, -1.0), V(0.15, 0.85, -0.5), V(0, 0, -1)) -- shaft up, blade forward
+local slamDown = { V(0.05, -0.5, -1.2), V(0, -0.55, -0.83), V(0, -1, 0.2) }
+SC.Moves = {
+	reap = { -- right -> left, blade leading
+		wkey(0.3, V(0.3, -0.2, -0.9), V(0.75, 0.35, -0.55), V(-0.4, 0, -1), R(0, -0.5, 0)),
+		wkey(0.55, V(0, -0.5, -1.1), V(-0.1, 0.1, -1), V(-1, 0, 0)),
+		wkey(1, V(-0.3, -0.5, -0.95), V(-0.8, 0.1, -0.55), V(-0.3, 0, 1), R(0, 0.6, 0)),
+	},
+	reapBack = { -- left -> right
+		wkey(0.3, V(-0.25, -0.2, -0.9), V(-0.75, 0.35, -0.55), V(0.4, 0, -1), R(0, 0.5, 0)),
+		wkey(0.55, V(0.1, -0.5, -1.1), V(0.1, 0.1, -1), V(1, 0, 0)),
+		wkey(1, V(0.35, -0.5, -0.95), V(0.8, 0.1, -0.55), V(0.3, 0, 1), R(0, -0.6, 0)),
+	},
+	spin = { -- shaft level out to the right, the whole body spins once
+		wkey(0.15, V(0.2, -0.45, -1.0), V(0.95, 0.05, -0.3), V(0, 0, -1)),
+		wkey(1, V(0.2, -0.45, -1.0), V(0.95, 0.05, -0.3), V(0, 0, -1)),
+	},
+	slam = { -- straight up, then down into the ground in front
+		wkey(0.45, V(0.05, 1.5, -0.85), V(0, 0.95, -0.3), V(0, 0, -1), R(0.2, 0, 0)),
+		wkey(0.65, slamDown[1], slamDown[2], slamDown[3], R(-0.35, 0, 0)),
+		wkey(1, slamDown[1], slamDown[2], slamDown[3], R(-0.3, 0, 0)),
+	},
+}
 
-local function swordKey(kind, e, from)
-	local prevE, prevK = 0, from
-	for _, k in ipairs(SWORD_MOVES[kind] or {}) do
-		if e <= k[1] then return blendKey(prevK, k[2], smooth((e - prevE) / math.max(k[1] - prevE, 1e-3))) end
-		prevE, prevK = k[1], k[2]
+local function weaponKey(W, kind, e, from)
+	local prevE, prev = 0, from
+	for _, k in ipairs(W.Moves[kind] or {}) do
+		if e <= k.e then
+			local s = smooth((e - prevE) / math.max(k.e - prevE, 1e-3))
+			return { cf = prev.cf:Lerp(k.cf, s), waist = prev.waist:Lerp(k.waist, s) }
+		end
+		prevE, prev = k.e, k
 	end
-	return prevK
+	return prev
 end
 
-local function applyKey(pose, k, withWaist)
-	pose.RightShoulder = k.sh
-	pose.RightElbow = R(k.el, 0, 0)
-	if withWaist and k.waist then pose.Waist = k.waist end
+----------------------------------------------------------------------------------------
+-- arm IK (R15): read from the character's own shoulder / elbow / wrist joints
+----------------------------------------------------------------------------------------
+
+local rigs = setmetatable({}, { __mode = "k" }) -- [character] = { Right = rig, Left = rig }
+
+-- a joint's child part relative to its parent, with the pose rotation applied
+local function link(m, rot)
+	return CFrame.new(m.C0.Position) * rot * m.C0.Rotation * m.C1:Inverse()
+end
+
+local function armRig(character, side)
+	local cache = rigs[character]
+	if not cache then
+		cache = {}
+		rigs[character] = cache
+	end
+	local r = cache[side]
+	if r and r.sh.Parent and r.el.Parent and r.wr.Parent then return r end
+	local ua = character:FindFirstChild(side .. "UpperArm")
+	local la = character:FindFirstChild(side .. "LowerArm")
+	local hand = character:FindFirstChild(side .. "Hand")
+	local sh = ua and ua:FindFirstChild(side .. "Shoulder")
+	local el = la and la:FindFirstChild(side .. "Elbow")
+	local wr = hand and hand:FindFirstChild(side .. "Wrist")
+	if not (sh and el and wr and sh:IsA("Motor6D") and el:IsA("Motor6D") and wr:IsA("Motor6D")) then return nil end
+	r = { sh = sh, el = el, wr = wr, S = sh.C0.Position, A = sh.C0.Rotation * sh.C1:Inverse() }
+	r.upper = (r.A * CFrame.new(el.C0.Position)).Position -- shoulder -> elbow, before the shoulder turns
+	cache[side] = r
+	return r
+end
+
+-- hand relative to the shoulder pivot (before the shoulder turns) with the elbow bent by el
+local function handRel(r, el)
+	return r.A * link(r.el, R(el, 0, 0)) * link(r.wr, CFrame.identity)
+end
+
+-- hand CFrame in UpperTorso space for a shoulder rotation + elbow bend
+local function handCF(r, q, el)
+	return CFrame.new(r.S) * q * handRel(r, el)
+end
+
+local function rotBetween(a, b)
+	local axis = a:Cross(b)
+	local dot = math.clamp(a:Dot(b), -1, 1)
+	if axis.Magnitude < 1e-6 then
+		if dot > 0 then return CFrame.identity end
+		local perp = math.abs(a.X) < 0.9 and Vector3.xAxis or Vector3.yAxis
+		return CFrame.fromAxisAngle(a:Cross(perp).Unit, math.pi)
+	end
+	return CFrame.fromAxisAngle(axis.Unit, math.acos(dot))
+end
+
+-- shoulder rotation + elbow bend that put the hand at target (UpperTorso space), elbow toward pole.
+-- Out of reach: the arm points straight at it.
+local function solveArm(r, target, pole)
+	local d = target - r.S
+	local dist = d.Magnitude
+	local lo, hi = 0, 2.6 -- elbow bend, lo = straight (longest reach)
+	local el
+	if dist >= handRel(r, lo).Position.Magnitude then
+		el = lo
+	elseif dist <= handRel(r, hi).Position.Magnitude then
+		el = hi
+	else
+		for _ = 1, 12 do
+			local mid = (lo + hi) / 2
+			if handRel(r, mid).Position.Magnitude > dist then lo = mid else hi = mid end
+		end
+		el = (lo + hi) / 2
+	end
+	local dir = dist > 1e-4 and d / dist or -Vector3.yAxis
+	local q = rotBetween(handRel(r, el).Position.Unit, dir)
+	-- twist around the reach line so the elbow points toward the pole
+	local e1 = q:VectorToWorldSpace(r.upper)
+	local a = e1 - dir * e1:Dot(dir)
+	local b = pole - dir * pole:Dot(dir)
+	if a.Magnitude > 1e-4 and b.Magnitude > 1e-4 then
+		q = CFrame.fromAxisAngle(dir, math.atan2(dir:Dot(a:Cross(b)), a:Dot(b))) * q
+	end
+	return q, el
+end
+
+local POLE_R = V(0.6, -1, 0.35) -- elbows down, out and a little back
+local POLE_L = V(-0.6, -1, 0.35)
+
+----------------------------------------------------------------------------------------
+-- shuriken throw poses (side 1 = right arm, -1 = left)
+----------------------------------------------------------------------------------------
+
+local function holdPose(pose, side)
+	local name = side > 0 and "Right" or "Left"
+	pose[name .. "Shoulder"] = R(0.4, 0, 0.2 * side)
+	pose[name .. "Elbow"] = R(1.0, 0, 0)
+end
+
+local function throwPose(pose, side, e)
+	local name = side > 0 and "Right" or "Left"
+	local back, out, after = R(2.4, 0, 0.35 * side), R(1.45, 0, 0.05 * side), R(1.0, 0, -0.25 * side)
+	local sh, el
+	if e < 0.45 then -- wind up: hand back by the ear
+		local s = smooth(e / 0.45)
+		sh, el = R(0.4, 0, 0.2 * side):Lerp(back, s), lerp(1.0, 1.9, s)
+	elseif e < 0.6 then -- snap forward, let go
+		local s = smooth((e - 0.45) / 0.15)
+		sh, el = back:Lerp(out, s), lerp(1.9, 0.1, s)
+	else -- follow through across the body
+		local s = smooth((e - 0.6) / 0.4)
+		sh, el = out:Lerp(after, s), lerp(0.1, 0.4, s)
+	end
+	pose[name .. "Shoulder"] = sh
+	pose[name .. "Elbow"] = R(el, 0, 0)
 end
 
 ----------------------------------------------------------------------------------------
@@ -360,11 +587,14 @@ local function trackTool(tool, st)
 	end)
 end
 
-local function swordStep(tool, pose, dt, armsFree)
-	if not tool:FindFirstChild("Handle") then return pose end
+-- Sword / Scythe: place the weapon from the keyframes, then both arms on it
+local function meleeStep(W, tool, character, pose, dt, armsFree)
+	local weapon = tool:FindFirstChild("Weapon")
+	local joint = weapon and weapon:FindFirstChild("WeaponJoint")
+	if not joint then return pose end
 	local st = states[tool]
 	if not st then
-		st = { lastId = tool:GetAttribute("SwingId") or 0, swing = S.Draw, t = 0, arm = SWORD_IDLE }
+		st = { lastId = tool:GetAttribute("SwingId") or 0, swing = W.Draw, t = 0, key = W.Idle, T = CFrame.identity }
 		trackTool(tool, st)
 	end
 
@@ -372,65 +602,121 @@ local function swordStep(tool, pose, dt, armsFree)
 	local id = tool:GetAttribute("SwingId") or 0
 	if id ~= st.lastId then
 		st.lastId = id
-		st.swing, st.t = S.Swings[tool:GetAttribute("Swing") or 1] or S.Swings[1], 0
-		st.from, st.recoverFrom = st.arm, nil
+		st.swing, st.t = W.Swings[tool:GetAttribute("Swing") or 1] or W.Swings[1], 0
+		st.from, st.recoverFrom = st.key, nil
 		setTrails(tool, true)
-		setFlames(tool, S.FlameRateSwing)
+		if W.FlameRateSwing then setFlames(tool, W.FlameRateSwing) end
 	end
 
 	local out = table.clone(pose)
+	local key, drawing = W.Idle, false
 	if st.swing then
 		st.t += dt
 		local e = math.clamp(st.t / st.swing.time, 0, 1)
-		if st.swing == S.Draw then
+		if st.swing == W.Draw then
+			drawing = true
 			if armsFree then swingPose(out, "draw", e) end
-			st.arm = SWORD_IDLE
 		else
-			local k = swordKey(st.swing.name, e, st.from or SWORD_IDLE)
-			st.arm = k
-			if armsFree then
-				applyKey(out, k, true)
-				if st.swing.name == "spinSlash" then
-					out.LeftShoulder = R(0.1, 0, -1.1)
-					out.LeftElbow = R(0.3, 0, 0)
-					out.Root = R(0, TAU * smooth((e - 0.15) / 0.65), 0) * (out.Root or CFrame.identity)
-				else
-					out.LeftShoulder = R(0.4, 0, -0.25) -- guard
-					out.LeftElbow = R(1.3, 0, 0)
-				end
+			key = weaponKey(W, st.swing.name, e, st.from or W.Idle)
+			if armsFree and st.swing.spin then
+				out.Root = R(0, TAU * smooth((e - 0.15) / 0.65), 0) * (out.Root or CFrame.identity)
 			end
 		end
 		if e >= 1 then
-			st.recoverFrom = st.swing ~= S.Draw and st.arm or nil
+			st.recoverFrom = not drawing and key or nil
 			st.recover = 0
 			st.swing = nil
 			setTrails(tool, false)
-			setFlames(tool, S.FlameRate)
+			if W.FlameRate then setFlames(tool, W.FlameRate) end
 			local sparks = tool:FindFirstChild("Sparks", true)
 			if sparks then sparks:Emit(16) end
 		end
-	else
+	elseif st.recoverFrom then
 		-- ease back into the ready stance
-		local k = SWORD_IDLE
-		if st.recoverFrom then
-			st.recover += dt
-			local s = smooth(st.recover / 0.4)
-			k = blendKey(st.recoverFrom, SWORD_IDLE, s)
-			if s >= 1 then st.recoverFrom = nil end
-		end
-		st.arm = k
-		if armsFree then applyKey(out, k, k ~= SWORD_IDLE) end
+		st.recover += dt
+		local s = smooth(st.recover / 0.4)
+		key = { cf = st.recoverFrom.cf:Lerp(W.Idle.cf, s), waist = st.recoverFrom.waist:Lerp(CFrame.identity, s) }
+		if s >= 1 then st.recoverFrom = nil end
+	end
+	st.key = key
+
+	local target = CFrame.identity -- weapon relative to the default hold
+	local right, left = armRig(character, "Right"), armRig(character, "Left")
+	if right and left and armsFree and not drawing then
+		local cf = key.cf
+		-- right hand: its centre a little back from the grip, toward the shoulder
+		local grip = cf.Position
+		local qR, eR = solveArm(right, grip - (grip - right.S).Unit * 0.2, POLE_R)
+		local palm = handCF(right, qR, eR) * GoldenWeapons.Palm
+		local wcf = CFrame.new(palm.Position) * cf.Rotation -- weapon where the hand really ends up
+		local leftGrip = wcf * V(0, -W.LeftGap, 0)
+		local qL, eL = solveArm(left, leftGrip - (leftGrip - left.S).Unit * 0.2, POLE_L)
+		out.RightShoulder, out.RightElbow = qR, R(eR, 0, 0)
+		out.LeftShoulder, out.LeftElbow = qL, R(eL, 0, 0)
+		out.Waist = key.waist * (out.Waist or CFrame.identity)
+		target = joint.C0:Inverse() * palm:Inverse() * wcf
+	end
+	-- the weapon hangs off the hand, so it follows the arm exactly; smooth the hand -> weapon turn
+	st.T = st.T:Lerp(target, 1 - math.exp(-dt * 16))
+	joint.Transform = st.T
+
+	hideInHand(tool, st, drawing and st.t < W.Draw.time * W.Draw.grabAt)
+	return out
+end
+
+-- Shurikens: hold one in each hand, throw animation (the server throws the real ones)
+local function shurikenStep(tool, pose, dt, armsFree)
+	local st = states[tool]
+	if not st then
+		st = { lastId = tool:GetAttribute("SwingId") or 0, swing = K.Draw, t = 0 }
+		trackTool(tool, st)
+	end
+	local id = tool:GetAttribute("SwingId") or 0
+	if id ~= st.lastId then
+		st.lastId = id
+		st.swing, st.t = K.Swings[tool:GetAttribute("Swing") or 1] or K.Swings[1], 0
 	end
 
-	hideInHand(tool, st, st.swing == S.Draw and st.t < S.Draw.time * S.Draw.grabAt)
+	local out = table.clone(pose)
+	local drawing = st.swing == K.Draw
+	if st.swing then
+		st.t += dt
+		local e = math.clamp(st.t / st.swing.time, 0, 1)
+		if armsFree then
+			if drawing then
+				swingPose(out, "draw", e)
+				holdPose(out, -1)
+			else
+				local hands = st.swing.hands
+				for _, side in ipairs({ 1, -1 }) do
+					if table.find(hands, side > 0 and "R" or "L") then throwPose(out, side, e) else holdPose(out, side) end
+				end
+				if #hands == 1 then
+					-- turn into the throw: back on the wind-up, forward on the release
+					local side = hands[1] == "R" and 1 or -1
+					local turn = e < 0.45 and lerp(0, -0.3, smooth(e / 0.45)) or lerp(-0.3, 0.25, smooth((e - 0.45) / 0.3))
+					out.Waist = R(0, turn * side, 0) * (out.Waist or CFrame.identity)
+				end
+			end
+		end
+		if e >= 1 then st.swing = nil end
+	elseif armsFree then
+		holdPose(out, 1)
+		holdPose(out, -1)
+	end
+
+	hideInHand(tool, st, drawing and st.t < K.Draw.time * K.Draw.grabAt)
 	return out
 end
 
 -- returns the pose with the arms overridden, and places the free stick
 function GoldenWeapons.Step(character, root, pose, dt, armsFree)
 	local tool = character:FindFirstChildOfClass("Tool")
-	if tool and tool.Name == S.ToolName then return swordStep(tool, pose, dt, armsFree) end
-	if not tool or tool.Name ~= N.ToolName then return pose end
+	if not tool then return pose end
+	if tool.Name == S.ToolName then return meleeStep(S, tool, character, pose, dt, armsFree) end
+	if tool.Name == SC.ToolName then return meleeStep(SC, tool, character, pose, dt, armsFree) end
+	if tool.Name == K.ToolName then return shurikenStep(tool, pose, dt, armsFree) end
+	if tool.Name ~= N.ToolName then return pose end
 	local handle = tool:FindFirstChild("Handle")
 	local stickB = tool:FindFirstChild("StickB")
 	local joint = stickB and stickB:FindFirstChild("ChainJoint")
