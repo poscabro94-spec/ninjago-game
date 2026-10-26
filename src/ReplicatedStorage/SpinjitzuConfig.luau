@@ -10,12 +10,13 @@ Config.Presets = {
 	-- Sparks = "sparkle" | "embers" | "droplets" | "electric" | "dust" | "snow"
 	-- Base = "fire" | "water" | "lightning" | "earth" | "ice"   (element extras)
 	-- Glow / Band / LightBrightness optionally override the defaults below
-	-- DragonPlate / DragonEdge / DragonWing optionally set the dragon's colours (blocks, glowing
-	-- edges + bones, wings); DragonFlame = its cloud
+	-- DragonPlate / DragonWing / DragonTeeth / DragonEdge optionally set the dragon's colours (body +
+	-- head, wings, teeth, drips/streaks)
 	Energy = {
 		Color = Color3.fromRGB(35, 235, 10), Highlight = Color3.fromRGB(215, 245, 35),
 		Sounds = { Start = "78556963713691", Loop = "89882806971818", End = "99341603228804" },
 		Sparks = "sparkle",
+		DragonPlate = Color3.fromRGB(45, 190, 25), DragonWing = Color3.fromRGB(205, 240, 25), -- green + lime
 		DragonFlame = ColorSequence.new({
 			ColorSequenceKeypoint.new(0, Color3.fromRGB(245, 255, 130)),
 			ColorSequenceKeypoint.new(0.45, Color3.fromRGB(90, 255, 90)),
@@ -37,7 +38,8 @@ Config.Presets = {
 		Color = Color3.fromRGB(20, 150, 255), Highlight = Color3.fromRGB(130, 225, 255), Deep = Color3.fromRGB(0, 55, 185),
 		Sounds = { Start = "115630403946895", Loop = "81234467851579", End = "126141400807685" },
 		Sparks = "electric", Base = "lightning", Glow = 0.6, Band = 0.7, LightBrightness = 6,
-		DragonPlate = Color3.fromRGB(40, 55, 240), DragonEdge = Color3.fromRGB(150, 165, 255),
+		DragonPlate = Color3.fromRGB(40, 55, 240), DragonWing = Color3.fromRGB(95, 145, 255),
+		DragonEdge = Color3.fromRGB(150, 165, 255),
 	},
 	Earth = {
 		Color = Color3.fromRGB(170, 105, 30), Highlight = Color3.fromRGB(230, 165, 60), Deep = Color3.fromRGB(100, 58, 15),

@@ -27,10 +27,12 @@ def piece(name, p):
     glow = "\n".join('\t\t\t{ %s, %s, %s, %s, "%s" },' % (vec(g[0]), vec(g[1]), vec(g[2]), n(g[3]), g[4] if len(g) > 4 else "block")
                      for g in p.glow)
     gtris = [x for a, b, c in p.gtris for v in (a, b, c) for x in v]
+    teeth = [x for a, b, c in p.teeth for v in (a, b, c) for x in v]
     return (f"\t{name} = {{\n\t\ttris = {{ -- x, y, z of each corner, 3 corners a triangle\n{nums(tris, 9)}\n\t\t}},\n"
             f"\t\tedges = {{ -- from x, y, z, to x, y, z, thickness\n{nums(edges, 7)}\n\t\t}},\n"
             f"\t\tglow = {{ -- centre, size, tilt, transparency, shape (block / oval)\n{glow}\n\t\t}},\n"
-            f"\t\tgtris = {{ -- glowing white triangles\n{nums(gtris, 9)}\n\t\t}},\n\t}},\n")
+            f"\t\tgtris = {{ -- glowing white triangles\n{nums(gtris, 9)}\n\t\t}},\n"
+            f"\t\tteeth = {{ -- solid teeth\n{nums(teeth, 9)}\n\t\t}},\n\t}},\n")
 
 
 DRIPS = ["Wx", "Tb", "P1", "P"]

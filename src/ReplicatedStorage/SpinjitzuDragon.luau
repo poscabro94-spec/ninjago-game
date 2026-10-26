@@ -1,4 +1,4 @@
--- SpinjitzuDragon v16.0  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuDragon v16.1  (ModuleScript in ReplicatedStorage)
 -- Elemental dragon that appears behind the character after Spinjitzu (Rising Dragon), built from
 -- plain parts like the show's energy dragons: solid-looking panels in the element colour with thin
 -- glowing outlines. One tall column behind you: a cap-shaped faceted head on top (V seams down
@@ -117,9 +117,11 @@ function Dragon.new(character, color, highlight, elementName)
 	self.flakeCol = Color3.fromHSV(h, 0.9, 0.85)
 	self.flakeDark = Color3.fromHSV(h, 0.95, 0.55)
 	-- see-through blocks + wings, bright edges + bones, white glow inside (presets can override)
-	self.plateCol = preset.DragonPlate or Color3.fromHSV(h, math.max(s, 0.8), 0.8)
-	self.edgeCol = preset.DragonEdge or self.plateCol:Lerp(WHITE, 0.3)
-	self.wingCol = preset.DragonWing or self.plateCol
+	-- two shades: the body + head in a deeper shade, the wings in a lighter one
+	self.plateCol = preset.DragonPlate or Color3.fromHSV(h, math.max(s, 0.8), 0.75)
+	self.wingCol = preset.DragonWing or Color3.fromHSV(h, math.max(s, 0.8) * 0.75, 1)
+	self.toothCol = preset.DragonTeeth or self.plateCol
+	self.edgeCol = preset.DragonEdge or self.wingCol:Lerp(WHITE, 0.3)
 	self.coreCol = WHITE:Lerp(self.glowCol, 0.15)
 	local okScale, modelScale = pcall(function() return character:GetScale() end)
 	self.sc = (Config.DragonScale or 1) * (okScale and modelScale or 1)
@@ -142,13 +144,18 @@ function Dragon.new(character, color, highlight, elementName)
 		end
 	end
 
-	self.folder = Instance.new("Folder")
+	self.folder = Instance.new("Model")
 	self.folder.Name = "Dragon_" .. character.Name
 	self.anchor = newPart("Part", self.folder, { Name = "Anchor", Size = Vector3.new(0.2, 0.2, 0.2) })
 	self.anchor.CFrame = root.CFrame
 
 	self:_buildBody()
 	self:_buildAura()
+	-- a glowing outline round the whole silhouette
+	self.outline = make("Highlight", {
+		Adornee = self.folder, FillTransparency = 1, OutlineColor = self.wingCol:Lerp(WHITE, 0.2),
+		OutlineTransparency = 1, DepthMode = Enum.HighlightDepthMode.Occluded,
+	}, self.folder)
 	self:_muteSteps()
 
 	self.folder.Parent = getFxFolder()
@@ -203,6 +210,18 @@ function Dragon:_mist(parent, size)
 	})
 end
 
+-- green-flame wisps licking up off it (fire texture in the dragon's two shades)
+function Dragon:_flames(parent, size)
+	self:_emitter(parent, {
+		Texture = TEX_FIRE, Color = ColorSequence.new(self.wingCol, self.plateCol), LightEmission = 1, Brightness = 3,
+		Size = NumberSequence.new({ kp(0, 0.9 * size), kp(0.5, 1.3 * size), kp(1, 0.3 * size) }),
+		Transparency = NumberSequence.new({ kp(0, 0.6), kp(0.2, 0.15), kp(1, 1) }),
+		Lifetime = NumberRange.new(0.5, 1.0), Rate = 9, Speed = NumberRange.new(1, 3),
+		SpreadAngle = Vector2.new(180, 180), Acceleration = Vector3.new(0, 8, 0), Drag = 1,
+		Rotation = NumberRange.new(0, 360), RotSpeed = NumberRange.new(-120, 120),
+	})
+end
+
 function Dragon:_facets(root, data, scale, color)
 	local tr = data.tris
 	for i = 1, #tr, 9 do
@@ -212,6 +231,18 @@ function Dragon:_facets(root, data, scale, color)
 		if (b - a):Cross(c - a).Magnitude > 1e-6 then
 			for _, w in ipairs(triangle(a, b, c, 0.05 * scale)) do
 				self:_add(root, "WedgePart", w[1], w[2], color or self.plateCol, 0.2)
+			end
+		end
+	end
+	-- solid teeth
+	local tt = data.teeth or {}
+	for i = 1, #tt, 9 do
+		local a = Vector3.new(tt[i], tt[i + 1], tt[i + 2]) * scale
+		local b = Vector3.new(tt[i + 3], tt[i + 4], tt[i + 5]) * scale
+		local c = Vector3.new(tt[i + 6], tt[i + 7], tt[i + 8]) * scale
+		if (b - a):Cross(c - a).Magnitude > 1e-6 then
+			for _, w in ipairs(triangle(a, b, c, 0.06 * scale)) do
+				self:_add(root, "WedgePart", w[1], w[2], self.toothCol, 0)
 			end
 		end
 	end
@@ -268,7 +299,11 @@ function Dragon:_buildBody()
 			return a
 		end
 		-- long drips of energy hanging straight down off the wing (the bottom end is placed each frame)
-		for _, name in ipairs(M.WingDrips) do self:_mist(point(name), sc) end
+		for _, name in ipairs(M.WingDrips) do
+			self:_mist(point(name), sc)
+			self:_flames(point(name), sc)
+		end
+		self:_flames(point("W"), sc)
 		for _, name in ipairs(M.WingDrips) do
 			local top = point(name)
 			local bottom = Instance.new("Attachment")
@@ -303,6 +338,7 @@ function Dragon:_buildBody()
 		a.Position = Vector3.new(0, y, Model.NeckTop.Z) * sc
 		a.Parent = self.body
 		self:_mist(a, 1.2 * sc)
+		self:_flames(a, 1.3 * sc)
 	end
 	-- streaks raining down / spraying out below it
 	local below = Instance.new("Attachment")
@@ -467,6 +503,7 @@ function Dragon:Update(dt)
 	if a ~= prev or dt == 0 then
 		for _, fp in ipairs(self.fadeParts) do fp[1].Transparency = 1 - (1 - fp[2]) * a end
 		for _, fb in ipairs(self.fadeBeams) do fb[1].Transparency = NumberSequence.new(1 - (1 - fb[2]) * a) end
+		if self.outline then self.outline.OutlineTransparency = 1 - a end
 	end
 
 	-- how fast are we really moving? (works for you, other players and bots alike)

@@ -15,6 +15,7 @@ class Piece:
     def __init__(self):
         self.tris, self.edges, self.glow = [], [], []
         self.gtris = []   # glowing white triangles (the inside of the mouth)
+        self.teeth = []   # solid teeth (their own colour)
 
     def tri(self, a, b, c):
         self.tris.append((a, b, c))
@@ -125,18 +126,18 @@ def build_head():
         p.glow.append((turn(V(sx * 0.54, -0.35, -1.75)), V(0.05, 0.16, 2.7), V(-JAW_OPEN, 0, 0), 0, "block"))  # lower
     throat = [V(-0.55, -0.42, 0.05), V(0.55, -0.42, 0.05), turn(V(0.55, -0.42, 0.1)), turn(V(-0.55, -0.42, 0.1))]
     p.gtris.append((throat[0], throat[1], throat[2])); p.gtris.append((throat[0], throat[2], throat[3]))
-    # ... with jagged teeth along both jaws, dark against the light
+    # ... with jagged teeth along both jaws (solid, so they stand out against the light)
     for sx in (1, -1):
         for i, z in enumerate([-0.55, -1.0, -1.45, -1.9, -2.35, -2.8, -3.2]):
             ln = 0.38 if i % 2 == 0 else 0.26
             x = sx * (0.62 - 0.03 * i)
             a, b, tip = V(x, -0.4, z + 0.2), V(x, -0.4, z - 0.2), V(x, -0.4 - ln, z - 0.05)
-            p.tri(a, b, tip); p.edge(a, tip, 0.03); p.edge(b, tip, 0.03)
+            p.teeth.append((a, b, tip))
         for i, z in enumerate([-0.5, -0.95, -1.4, -1.85, -2.3, -2.75]):
             ln = 0.32 if i % 2 == 0 else 0.22
             x = sx * (0.6 - 0.03 * i)
             a, b, tip = turn(V(x, -0.42, z + 0.2)), turn(V(x, -0.42, z - 0.2)), turn(V(x, -0.42 + ln, z - 0.05))
-            p.tri(a, b, tip); p.edge(a, tip, 0.03); p.edge(b, tip, 0.03)
+            p.teeth.append((a, b, tip))
     # jawline: bumpy plates along the outside of the lower jaw, a block at each jaw angle, a chin
     for sx in (1, -1):
         for z, s in ((-0.6, 0.85), (-1.6, 0.75), (-2.5, 0.6)):
