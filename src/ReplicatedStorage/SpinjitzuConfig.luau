@@ -37,6 +37,7 @@ Config.Presets = {
 		Color = Color3.fromRGB(20, 150, 255), Highlight = Color3.fromRGB(130, 225, 255), Deep = Color3.fromRGB(0, 55, 185),
 		Sounds = { Start = "115630403946895", Loop = "81234467851579", End = "126141400807685" },
 		Sparks = "electric", Base = "lightning", Glow = 0.6, Band = 0.7, LightBrightness = 6,
+		DragonPlate = Color3.fromRGB(40, 55, 240), DragonEdge = Color3.fromRGB(150, 165, 255),
 	},
 	Earth = {
 		Color = Color3.fromRGB(170, 105, 30), Highlight = Color3.fromRGB(230, 165, 60), Deep = Color3.fromRGB(100, 58, 15),

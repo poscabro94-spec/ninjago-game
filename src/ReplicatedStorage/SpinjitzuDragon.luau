@@ -1,4 +1,4 @@
--- SpinjitzuDragon v14.0  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuDragon v15.0  (ModuleScript in ReplicatedStorage)
 -- Elemental dragon that appears behind the character after Spinjitzu (Rising Dragon), built from
 -- plain parts like the show's energy dragons: solid-looking panels in the element colour with thin
 -- glowing outlines. One tall column behind you: a cap-shaped faceted head on top (V seams down
@@ -320,7 +320,7 @@ function Dragon:_placeBody(rootCF, flap, effort, beat, parts, cfs)
 	-- wings beat about the hinge at the shoulder
 	for side, wing in pairs(self.wings) do
 		local hinge = CFrame.new(side * M.Hinge.X * sc, M.Hinge.Y * sc, M.Hinge.Z * sc)
-			* CFrame.Angles(0, -side * M.HingeYaw, 0) * CFrame.Angles(0, 0, side * flap)
+			* CFrame.Angles(0, -side * M.HingeYaw, 0) * CFrame.Angles(0, 0, side * (M.WingRaise + flap))
 		put(wing, rootCF * hinge * (side < 0 and CFrame.Angles(0, math.pi, 0) or CFrame.identity))
 	end
 	-- the column of energy under you while rising
@@ -348,7 +348,7 @@ function Dragon:_buildAura()
 		Lifetime = NumberRange.new(0.4, 0.9), Rate = 22, Speed = NumberRange.new(3 * sc, 8 * sc),
 		SpreadAngle = Vector2.new(180, 180), Drag = 2, Rotation = NumberRange.new(0, 360), RotSpeed = NumberRange.new(-200, 200),
 	})
-	self.light = make("PointLight", { Color = self.glowCol, Brightness = 3, Range = 22 * sc, Shadows = false }, att)
+	self.light = make("PointLight", { Color = self.plateCol, Brightness = 3, Range = 18 * sc, Shadows = false }, att)
 	-- burst when the dragon appears
 	task.defer(function()
 		if self.aura and self.aura.Parent then self.aura:Emit(50) end
@@ -484,7 +484,7 @@ function Dragon:Update(dt)
 	end
 
 	if self.light then
-		self.light.Brightness = 1.2 * a * (0.85 + 0.15 * math.sin(t * 7))
+		self.light.Brightness = 2 * a * (0.85 + 0.15 * math.sin(t * 7))
 	end
 	if self.headLight then self.headLight.Brightness = a end
 	for s in pairs(self.muted) do

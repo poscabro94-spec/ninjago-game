@@ -54,6 +54,7 @@ return {{
 	TailTip = {vec(F.TAIL_TIP)},
 	Hinge = {vec(F.HINGE)}, -- right wing's hinge (root space)
 	HingeYaw = {F.HINGE_YAW}, -- wings swept back a little
+	WingRaise = {F.WING_RAISE}, -- wings tilted up toward the tips
 	WingPoints = {{
 {pts}
 	}},
