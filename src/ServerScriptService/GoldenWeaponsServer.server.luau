@@ -1,7 +1,8 @@
--- GoldenWeaponsServer v6.1  (Script in ServerScriptService)
+-- GoldenWeaponsServer v6.2  (Script in ServerScriptService)
 -- Gives every player the Golden Weapon of their element on spawn (slot 1) and swaps it when
 -- they switch element: Lightning = Nunchucks of Lightning, Fire = Sword of Fire,
--- Earth = Scythe of Quakes, Ice = Shurikens of Ice. When not equipped it sits on your back.
+-- Earth = Scythe of Quakes, Ice = Shurikens of Ice. The menu can pick another one (player attribute
+-- GoldenWeapon: a weapon kind or "None"). When not equipped it sits on your back.
 -- Melee weapons: click = 4-hit combo; the server picks the swing, plays the sounds and does the
 -- hit check (damage + knockback + hit flash in the weapon's colour). Scythe finisher = quake.
 -- Shurikens: the client sends where you aim (ShurikenThrow), the server throws them, they
@@ -1089,7 +1090,15 @@ local function give(player)
 	local backpack = player:FindFirstChildOfClass("Backpack") or player:WaitForChild("Backpack", 10)
 	local char = player.Character
 	if not backpack or not char or giveToken[player] ~= token then return end
-	local kind = GoldenWeapons.ByElement[elementOf(player)]
+	local choice = player:GetAttribute("GoldenWeapon") -- picked in the menu
+	local kind
+	if choice == "None" then
+		kind = nil
+	elseif choice and GoldenWeapons.Weapons[choice] then
+		kind = choice
+	else
+		kind = GoldenWeapons.ByElement[elementOf(player)]
+	end
 	local W = kind and GoldenWeapons.Weapons[kind]
 	if W and (backpack:FindFirstChild(W.ToolName) or char:FindFirstChild(W.ToolName)) then return end
 	clearWeapons(player, backpack, char)
@@ -1142,6 +1151,7 @@ local function onPlayer(player)
 	player.CharacterAdded:Connect(function() task.wait(0.2) give(player) end)
 	-- switching element (E) swaps the weapon
 	player:GetAttributeChangedSignal("SpinjitzuElement"):Connect(function() give(player) end)
+	player:GetAttributeChangedSignal("GoldenWeapon"):Connect(function() give(player) end)
 end
 Players.PlayerAdded:Connect(onPlayer)
 for _, player in ipairs(Players:GetPlayers()) do
