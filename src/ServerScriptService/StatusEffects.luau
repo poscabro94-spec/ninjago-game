@@ -1,8 +1,10 @@
--- StatusEffects v1.0  (ModuleScript in ServerScriptService)
+-- StatusEffects v1.1  (ModuleScript in ServerScriptService)
 -- What the elemental powers leave behind on whoever they hit:
 --   burn(W, model, hum, seconds, damage)   on fire: `damage` every second
 --   shock(W, model, hum, seconds, damage)  electrocuted: flickering glow + `damage` every second
 --   freeze(W, model, hum, seconds)         can't move; ice grows up from the floor to the neck
+--   slow(W, model, hum, seconds)           soaked: half speed, dripping
+--   launch(model, up) / blast(model, from, power)   thrown up / thrown away from `from`
 -- Hitting again while it's on restarts the time. W = the power's settings (colours, sounds).
 
 local RunService = game:GetService("RunService")
@@ -181,6 +183,55 @@ function Status.freeze(W, model, hum, seconds)
 		model:SetAttribute("FrozenSpeed", nil)
 		model:SetAttribute("FrozenJump", nil)
 	end)
+end
+
+function Status.slow(W, model, hum, seconds)
+	local root = rootOf(model)
+	if not root then return end
+	local token = (model:GetAttribute("SlowToken") or 0) + 1
+	model:SetAttribute("SlowToken", token)
+	if model:GetAttribute("SlowedFrom") == nil then model:SetAttribute("SlowedFrom", hum.WalkSpeed) end
+	local base = model:GetAttribute("SlowedFrom")
+	if not model:GetAttribute("FrozenSpeed") then hum.WalkSpeed = base * 0.5 end
+	local old = root:FindFirstChild("Soaked")
+	if old then old:Destroy() end
+	local a = Instance.new("Attachment")
+	a.Name = "Soaked"
+	a.Parent = root
+	local drips = Instance.new("ParticleEmitter")
+	drips.Color = ColorSequence.new(W.CoreColor, W.Color)
+	drips.LightEmission = 0.3
+	drips.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.25), NumberSequenceKeypoint.new(1, 0.1) })
+	drips.Lifetime = NumberRange.new(0.4, 0.7)
+	drips.Speed = NumberRange.new(0, 1)
+	drips.SpreadAngle = Vector2.new(180, 180)
+	drips.Acceleration = Vector3.new(0, -30, 0)
+	drips.Rate = 25
+	drips.Parent = a
+	Debris:AddItem(a, seconds)
+	task.delay(seconds, function()
+		if model:GetAttribute("SlowToken") ~= token then return end
+		if hum.Parent and not model:GetAttribute("FrozenSpeed") then hum.WalkSpeed = base end
+		model:SetAttribute("SlowedFrom", nil)
+	end)
+end
+
+local function throwRoot(model, velocity)
+	local root = rootOf(model)
+	if root and not root.Anchored and not model:GetAttribute("FrozenSpeed") then root.AssemblyLinearVelocity = velocity end
+end
+
+function Status.launch(model, up)
+	throwRoot(model, Vector3.new(0, up or 60, 0))
+end
+
+function Status.blast(model, from, power)
+	local root = rootOf(model)
+	if not root then return end
+	local away = root.Position - from
+	away = Vector3.new(away.X, 0, away.Z)
+	away = away.Magnitude > 0.1 and away.Unit or Vector3.new(0, 0, -1)
+	throwRoot(model, away * (power or 70) + Vector3.new(0, 25, 0))
 end
 
 -- can this power hit that model? (not yourself, not the demo / Spinjitzu bots)

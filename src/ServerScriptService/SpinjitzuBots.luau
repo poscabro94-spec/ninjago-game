@@ -11,7 +11,7 @@ local Bots = {}
 
 local SKIN = Color3.fromRGB(245, 205, 48)
 local BODY_COLORS = {
-	Life = Color3.fromRGB(40, 165, 45),
+	Energy = Color3.fromRGB(40, 165, 45),
 	Fire = Color3.fromRGB(200, 40, 30),
 	Water = Color3.fromRGB(30, 100, 210),
 	Lightning = Color3.fromRGB(35, 70, 200),

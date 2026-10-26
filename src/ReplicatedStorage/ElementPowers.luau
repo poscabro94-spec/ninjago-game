@@ -1,5 +1,5 @@
--- ElementPowers v2.0  (ModuleScript in ReplicatedStorage)
--- Elemental powers, used with empty hands (no Golden Weapon out): Lightning, Fire, Ice, Earth.
+-- ElementPowers v3.0  (ModuleScript in ReplicatedStorage)
+-- Elemental powers, used with empty hands (no Golden Weapon out): all six elements.
 --   tap left click:    a shot from the right hand -> the left hand -> a big one from both hands
 --   hold left click:   both hands out, a beam from each meets in front of you and one big beam
 --                      goes on to where you aim
@@ -8,6 +8,10 @@
 --   Ice        ice shards; the big one freezes them in ice up to the neck  | frost beam, freezes
 --                                                                           after 5s on someone
 --   Earth      rocks; the third is an earth wave along the ground          | sand blast, pushes back
+--   Water      water orbs; the big one soaks them (half speed for 3s)      | water jet, shoves + soaks
+--   Energy     energy orbs; the big one bursts and throws everyone far     | energy beam
+-- Clash: two beams pointed at each other lock together; both mash F, the clash point slides
+--   toward whoever's slower, the loser gets hit by the winner's effect AND their own (Effect).
 -- Settings + the arm poses (NinjaAnimator calls Step every frame, on every client).
 -- The server (ElementPowersServer) sets these attributes on the character: PowerElement,
 --   PowerMove + PowerId (a shot started), PowerBeam (beam on), PowerAim (where it points)
@@ -36,9 +40,12 @@ local function combo(damage, size, third)
 	}
 end
 
--- Shot = how the shots look (lightning / fire / ice / rock). Status on the third shot:
--- "shock" / "burn" (StatusTime seconds, StatusDamage each second), "freeze" (FreezeTime).
--- Beam: BeamStatus "burn" / "freeze" (after FreezeAfter seconds on the same target) / "push".
+-- Shot = how the shots look (lightning / fire / ice / rock / water / energy).
+-- Status on the third shot: "shock" / "burn" (StatusTime seconds, StatusDamage each second),
+-- "freeze" (FreezeTime), "slow" (SlowTime, half speed), "blast" (thrown far back).
+-- Effect = what this element does to someone who loses a beam clash (same names + "launch").
+-- Beam: BeamStatus "burn" / "freeze" (after FreezeAfter seconds on the same target) / "push" /
+-- "soak" (push + slow).
 -- BeamStyle: colours of the beam's core / glow / haze, crackling arcs, a particle stream.
 Powers.Lightning = {
 	Shot = "lightning",
@@ -53,6 +60,7 @@ Powers.Lightning = {
 	ComboWindow = 1.2,            -- seconds to click again to continue
 	Balls = combo(10, 1.1, { damage = 26, size = 2.6, blast = 9, status = "shock" }),
 	StatusTime = 3, StatusDamage = 5,
+	Effect = "shock",
 	BeamRange = 70,               -- studs
 	BeamDamage = 4,               -- per tick
 	BeamTick = 0.15,              -- seconds between damage ticks
@@ -73,6 +81,7 @@ Powers.Fire = {
 	ComboWindow = 1.2,
 	Balls = combo(10, 1.3, { damage = 24, size = 3, blast = 10, status = "burn" }),
 	StatusTime = 3, StatusDamage = 5,
+	Effect = "burn",
 	BeamRange = 30,               -- a flamethrower doesn't reach far
 	BeamDamage = 2,
 	BeamTick = 0.15,
@@ -95,6 +104,7 @@ Powers.Ice = {
 	ComboWindow = 1.2,
 	Balls = combo(10, 1.0, { damage = 18, size = 2.2, status = "freeze" }),
 	FreezeTime = 2.5,             -- seconds frozen (ice up to the neck, can't move)
+	Effect = "freeze",
 	BeamRange = 60,
 	BeamDamage = 3,
 	BeamTick = 0.15,
@@ -119,6 +129,7 @@ Powers.Earth = {
 	ComboWindow = 1.2,
 	-- the third: rocks burst out of the ground in a line toward the aim, throwing everyone up
 	Balls = combo(12, 1.4, { damage = 22, size = 0, wave = { length = 40, step = 2.5, radius = 4, up = 48 }, time = 0.6 }),
+	Effect = "launch",            -- thrown high up
 	BeamRange = 35,
 	BeamDamage = 2,
 	BeamTick = 0.15,
@@ -129,7 +140,59 @@ Powers.Earth = {
 			to = Color3.fromRGB(150, 105, 60), size = 3, speed = 40 } },
 }
 
-Powers.ByElement = { Lightning = Powers.Lightning, Fire = Powers.Fire, Ice = Powers.Ice, Earth = Powers.Earth }
+Powers.Water = {
+	Shot = "water",
+	Color = Color3.fromRGB(40, 150, 255),
+	CoreColor = Color3.fromRGB(200, 240, 255),
+	HitColor = Color3.fromRGB(60, 170, 255),
+	HitTextColor = Color3.fromRGB(150, 210, 255),
+	Sounds = { Throw = THROW, Hit = HITS, Final = BOOM },
+	BallSpeed = 100,
+	BallRange = 150,
+	ComboWindow = 1.2,
+	Balls = combo(10, 1.2, { damage = 20, size = 2.8, blast = 9, status = "slow" }),
+	SlowTime = 3,                 -- soaked: half speed for this long
+	Effect = "slow",
+	BeamRange = 45,
+	BeamDamage = 2,
+	BeamTick = 0.15,
+	BeamRadius = 1.5,
+	BeamStatus = "soak",          -- shoves them back and soaks them
+	BeamStyle = { core = Color3.fromRGB(220, 245, 255), glow = Color3.fromRGB(60, 160, 255), haze = Color3.fromRGB(30, 110, 220),
+		stream = { texture = "rbxasset://textures/particles/smoke_main.dds", from = Color3.fromRGB(220, 240, 255),
+			to = Color3.fromRGB(40, 130, 255), size = 1.8, speed = 55 } },
+}
+
+Powers.Energy = {
+	Shot = "energy",
+	Color = Color3.fromRGB(70, 230, 60),
+	CoreColor = Color3.fromRGB(235, 255, 150),
+	HitColor = Color3.fromRGB(110, 240, 80),
+	HitTextColor = Color3.fromRGB(190, 255, 140),
+	Sounds = { Throw = THROW, Hit = HITS, Final = BOOM },
+	BallSpeed = 105,
+	BallRange = 160,
+	ComboWindow = 1.2,
+	-- the big one bursts with rays of light and throws everyone far back
+	Balls = combo(11, 1.3, { damage = 26, size = 3, blast = 11, status = "blast" }),
+	Effect = "blast",
+	BeamRange = 70,
+	BeamDamage = 5,
+	BeamTick = 0.15,
+	BeamRadius = 1.1,
+	BeamStyle = { core = Color3.fromRGB(240, 255, 180), glow = Color3.fromRGB(80, 235, 60), haze = Color3.fromRGB(40, 190, 40),
+		arcs = true, stream = { texture = "rbxasset://textures/particles/sparkles_main.dds", from = Color3.fromRGB(240, 255, 170),
+			to = Color3.fromRGB(80, 235, 60), size = 0.6, speed = 55 } },
+}
+
+Powers.ByElement = { Lightning = Powers.Lightning, Fire = Powers.Fire, Ice = Powers.Ice, Earth = Powers.Earth,
+	Water = Powers.Water, Energy = Powers.Energy }
+
+-- beam clash: mash this key; each press pushes the clash point this much of the way
+Powers.ClashKey = Enum.KeyCode.F
+Powers.ClashPush = 0.025
+Powers.ClashDamage = 30         -- the loser takes this, plus both elements' effects
+Powers.ClashMaxTime = 15        -- nobody won by then: both get knocked back
 
 ----------------------------------------------------------------------------------------
 -- arm poses (NinjaAnimator convention: +x swings a hanging arm forward, +z swings the

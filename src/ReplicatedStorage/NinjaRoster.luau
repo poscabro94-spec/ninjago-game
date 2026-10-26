@@ -14,7 +14,7 @@ Roster.Ninjas = {
 	{ Name = "Cole",  Element = "Earth",     Color = Color3.fromRGB(32, 32, 36),   Shirt = 0, Pants = 0, Accessories = "" },
 	{ Name = "Jay",   Element = "Lightning", Color = Color3.fromRGB(20, 92, 196),  Shirt = 0, Pants = 0, Accessories = "" },
 	{ Name = "Zane",  Element = "Ice",       Color = Color3.fromRGB(236, 238, 240), Shirt = 0, Pants = 0, Accessories = "" },
-	{ Name = "Lloyd", Element = "Life",      Color = Color3.fromRGB(34, 140, 58),  Shirt = 0, Pants = 0, Accessories = "" },
+	{ Name = "Lloyd", Element = "Energy",    Color = Color3.fromRGB(34, 140, 58),  Shirt = 0, Pants = 0, Accessories = "" },
 	{ Name = "Nya",   Element = "Water",     Color = Color3.fromRGB(18, 150, 170), Shirt = 0, Pants = 0, Accessories = "" },
 }
 

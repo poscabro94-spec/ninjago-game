@@ -1,7 +1,8 @@
--- NinjaMenu v1.2  (LocalScript in StarterPlayerScripts)
+-- NinjaMenu v1.3  (LocalScript in StarterPlayerScripts)
 -- The MENU button (bottom left, or M) opens a panel: pick your character (NinjaRoster), switch
 -- Golden Weapons on and off (several at once), spawn the Tornado of Creation crew as bots and
--- training dummies (normal / infinite HP).
+-- training dummies (normal / infinite HP), and Duels: two NPCs clashing beams (you pick who
+-- wins) or an NPC that fights you.
 -- Cards show live 3D previews: your own avatar in each ninja's colours, and the weapon models
 -- from ReplicatedStorage. NinjaMenuServer does the actual change.
 
@@ -31,7 +32,7 @@ local QUICK = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Ou
 
 local ELEMENT_COLORS = {
 	Fire = Color3.fromRGB(255, 120, 40), Earth = Color3.fromRGB(205, 150, 80), Lightning = Color3.fromRGB(90, 190, 255),
-	Ice = Color3.fromRGB(190, 235, 255), Life = Color3.fromRGB(110, 230, 90), Water = Color3.fromRGB(60, 200, 220),
+	Ice = Color3.fromRGB(190, 235, 255), Energy = Color3.fromRGB(110, 230, 90), Water = Color3.fromRGB(60, 200, 220),
 }
 local WEAPON_ORDER = { "Sword", "Scythe", "Nunchucks", "Shurikens" }
 local OWNER = {} -- weapon kind -> element that owns it
@@ -181,6 +182,22 @@ local function tornadoIcon()
 	for i, band in ipairs(bands) do
 		new("Frame", { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, (i % 2 == 0) and 2 or -2, 0, (i - 1) * 10),
 			Size = UDim2.fromOffset(band[1], 8), BackgroundColor3 = band[2], BorderSizePixel = 0 }, { round(UDim.new(0, 4)) }).Parent = holder
+	end
+	return holder
+end
+
+-- two beams crashing into each other
+local function clashIcon()
+	local holder = new("Frame", { Size = UDim2.fromOffset(60, 60), BackgroundTransparency = 1 })
+	for _, side in ipairs({ { -1, Color3.fromRGB(90, 200, 255) }, { 1, Color3.fromRGB(255, 120, 30) } }) do
+		new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, side[1] * 14, 0.5, 0), Size = UDim2.fromOffset(30, 9),
+			Rotation = side[1] * 12, BackgroundColor3 = side[2], BorderSizePixel = 0 }, { round(UDim.new(0, 4)) }).Parent = holder
+	end
+	new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(20, 20),
+		BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0 }, { round() }).Parent = holder
+	for i = 0, 3 do
+		new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(3, 34),
+			Rotation = i * 45, BackgroundColor3 = Color3.fromRGB(255, 240, 170), BorderSizePixel = 0 }, { round(UDim.new(0, 2)) }).Parent = holder
 	end
 	return holder
 end
@@ -534,6 +551,83 @@ local function buildCards()
 	refresh()
 end
 
+----------------------------------------------------------------------------------------
+-- Duels page: pick two elements + who wins, or an element to fight
+----------------------------------------------------------------------------------------
+
+local DUEL_ELEMENTS = { "Fire", "Ice", "Earth", "Lightning", "Water", "Energy" }
+local duelPanel = new("Frame", { Position = UDim2.fromOffset(28, 14), Size = UDim2.new(1, -46, 1, -48), BackgroundTransparency = 1,
+	Visible = false, ZIndex = 2 })
+duelPanel.Parent = content
+
+-- a row of pill chips where one is picked; returns a getter for the pick
+local function chipRow(y, caption, options, colors, default)
+	label({ Position = UDim2.fromOffset(0, y + 6), Size = UDim2.fromOffset(70, 22), Text = caption, FontFace = SMALL, TextSize = 15,
+		TextColor3 = MUTED, TextXAlignment = Enum.TextXAlignment.Left, Stroke = 1, ZIndex = 3 }).Parent = duelPanel
+	local picked, chips = default, {}
+	local function paint()
+		for value, c in pairs(chips) do
+			c.button.BackgroundColor3 = value == picked and INK or PILL
+			c.stroke.Transparency = value == picked and 0 or 1
+		end
+	end
+	for i, option in ipairs(options) do
+		local stroke = outline(RED, 2, 1)
+		local button = new("TextButton", { Position = UDim2.fromOffset(74 + (i - 1) * 98, y), Size = UDim2.fromOffset(90, 34),
+			BackgroundColor3 = PILL, Text = "", AutoButtonColor = false, ZIndex = 3 }, {
+			round(), stroke,
+			label({ Size = UDim2.fromScale(1, 1), Text = option[2], FontFace = LABEL, TextSize = 15,
+				TextColor3 = colors and colors[option[1]] or Color3.new(1, 1, 1), Stroke = 1, ZIndex = 4 }),
+		})
+		button.Activated:Connect(function()
+			picked = option[1]
+			paint()
+		end)
+		button.Parent = duelPanel
+		chips[option[1]] = { button = button, stroke = stroke }
+	end
+	paint()
+	return function() return picked end
+end
+
+local function bigButton(x, y, text, onClick)
+	local b = new("TextButton", { Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(170, 40), BackgroundColor3 = RED,
+		Text = "", AutoButtonColor = false, ZIndex = 3 }, {
+		round(), outline(Color3.fromRGB(120, 0, 4), 2),
+		label({ Size = UDim2.fromScale(1, 1), Text = text, FontFace = TITLE, TextSize = 22, TextColor3 = Color3.new(1, 1, 1), ZIndex = 4 }),
+	})
+	b.Activated:Connect(onClick)
+	b.Parent = duelPanel
+	return b
+end
+
+local function sectionTitle(y, text)
+	label({ Position = UDim2.fromOffset(0, y), Size = UDim2.fromOffset(400, 26), Text = text, FontFace = LABEL, TextSize = 22,
+		TextColor3 = Color3.new(1, 1, 1), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3 }).Parent = duelPanel
+end
+
+local elementOptions = {}
+for _, el in ipairs(DUEL_ELEMENTS) do table.insert(elementOptions, { el, el }) end
+
+sectionTitle(0, "NPC vs NPC")
+local leftPick = chipRow(34, "Left", elementOptions, ELEMENT_COLORS, "Water")
+local rightPick = chipRow(76, "Right", elementOptions, ELEMENT_COLORS, "Earth")
+local winnerPick = chipRow(118, "Winner", { { "a", "Left" }, { "random", "Random" }, { "b", "Right" } }, nil, "random")
+bigButton(74 + 3 * 98 + 20, 115, "START DUEL", function()
+	remote:FireServer("duel", leftPick() .. "|" .. rightPick() .. "|" .. winnerPick())
+	setOpen(false)
+end)
+
+sectionTitle(186, "Fight an NPC")
+local fightPick = chipRow(220, "Element", elementOptions, ELEMENT_COLORS, "Fire")
+bigButton(74, 266, "FIGHT", function()
+	remote:FireServer("fight", fightPick())
+	setOpen(false)
+end)
+label({ Position = UDim2.fromOffset(0, 330), Size = UDim2.new(1, 0, 0, 40), TextWrapped = true, FontFace = SMALL, TextSize = 14,
+	TextColor3 = MUTED, TextXAlignment = Enum.TextXAlignment.Left, Stroke = 1, ZIndex = 3,
+	Text = "Beam them back to clash, then mash F. The loser gets hit by both elements. Remove Bots (Bots page) clears them." }).Parent = duelPanel
+
 -- tab pills along the top (one per page for now, the bar is ready for more)
 local function tab(text, selected)
 	return new("TextButton", {
@@ -551,6 +645,7 @@ local pages = {
 	{ name = "Characters", icon = ninjaIcon, tabs = { "Ninjas" }, grid = characterGrid },
 	{ name = "Weapons", icon = bladesIcon, tabs = { "Golden Weapons" }, grid = weaponGrid },
 	{ name = "Bots", icon = tornadoIcon, tabs = { "Bots & Dummies" }, grid = botGrid },
+	{ name = "Duels", icon = clashIcon, tabs = { "Duels" }, grid = duelPanel },
 }
 local sideItems = {}
 

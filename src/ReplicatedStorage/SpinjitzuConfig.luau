@@ -1,4 +1,4 @@
--- SpinjitzuConfig v15.3  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuConfig v15.4  (ModuleScript in ReplicatedStorage)
 
 local Config = {}
 
@@ -11,7 +11,7 @@ Config.Presets = {
 	-- Base = "fire" | "water" | "lightning" | "earth" | "ice"   (element extras)
 	-- Glow / Band / LightBrightness optionally override the defaults below
 	-- DragonMembrane / DragonBone / DragonHead / DragonGlow / DragonFlame optionally set the dragon's colours
-	Life = {
+	Energy = {
 		Color = Color3.fromRGB(35, 235, 10), Highlight = Color3.fromRGB(215, 245, 35),
 		Sounds = { Start = "78556963713691", Loop = "89882806971818", End = "99341603228804" },
 		Sparks = "sparkle",
@@ -68,7 +68,7 @@ Config.Presets = {
 }
 
 -- >>> PICK THE ELEMENT <<<
-Config.Element = "Life"
+Config.Element = "Energy"
 
 -- Or set your own colours (leave nil to use the preset above)
 Config.CustomColor = nil       -- e.g. Color3.fromRGB(255, 0, 150)
@@ -76,11 +76,11 @@ Config.CustomHighlight = nil   -- nil = auto (lighter version of the colour)
 
 Config.Keybind = Enum.KeyCode.Q
 Config.CycleKey = Enum.KeyCode.E            -- switch element
-Config.ElementOrder = { "Life", "Fire", "Water", "Lightning", "Earth", "Ice" }
+Config.ElementOrder = { "Energy", "Fire", "Water", "Lightning", "Earth", "Ice" }
 
 -- Test bot: a dummy that loops Spinjitzu (6s on, 1s off) so you can watch it. Set false to remove.
 Config.TestBot = true
-Config.TestBotElements = { "Life", "Fire", "Water", "Lightning", "Earth", "Ice" } -- one bot per element, side by side
+Config.TestBotElements = { "Energy", "Fire", "Water", "Lightning", "Earth", "Ice" } -- one bot per element, side by side
 Config.TestBotPosition = Vector3.new(0, 0, 20)
 Config.HideCharacter = true    -- player is invisible inside the tornado
 Config.MuteFootsteps = true    -- no running sounds while spinning
@@ -157,7 +157,7 @@ Config.LightBrightness = 4
 Config.LightRange = 14
 
 -- resolved colours (don't edit)
-local preset = Config.Presets[Config.Element] or Config.Presets.Life
+local preset = Config.Presets[Config.Element] or Config.Presets.Energy
 Config.Color = Config.CustomColor or preset.Color
 Config.HighlightColor = Config.CustomHighlight or (Config.CustomColor and Config.CustomColor:Lerp(Color3.new(1, 1, 0.6), 0.5)) or preset.Highlight
 
