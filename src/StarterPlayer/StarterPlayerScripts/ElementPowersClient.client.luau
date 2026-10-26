@@ -1,7 +1,9 @@
--- ElementPowersClient v1.0  (LocalScript in StarterPlayerScripts)
--- Your elemental power buttons (Lightning, empty hands): left click = lightning ball combo,
--- hold right click = lightning beam. Turns you toward where you aim, and draws everyone's
--- beam as a crackling arc from the hand to whatever it hits.
+-- ElementPowersClient v1.1  (LocalScript in StarterPlayerScripts)
+-- Your elemental power button (Lightning, empty hands): tap left click = lightning ball combo,
+-- hold left click = beam. Turns you toward where you aim. Draws the effects for everyone:
+--   beam: a beam from each hand meets in a glowing orb in front of you, one big crackling beam
+--         goes on from there (grows out over a split second), sparks + light where it hits
+--   balls: crackling arcs + an aura around each ball, sparks in the hands while winding up
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -15,6 +17,11 @@ local player = Players.LocalPlayer
 local mouse = player:GetMouse()
 local L = Powers.Lightning
 local rng = Random.new()
+
+local fxFolder = Instance.new("Folder")
+fxFolder.Name = "LightningFx"
+fxFolder.Parent = workspace
+mouse.TargetFilter = fxFolder -- aim through the effects themselves
 
 local function canUse()
 	local character = player.Character
@@ -34,31 +41,50 @@ local function face(aim)
 	if (flat - root.Position).Magnitude > 1 then root.CFrame = CFrame.lookAt(root.Position, flat) end
 end
 
+----------------------------------------------------------------------------------------
+-- input: tap = ball, hold = beam
+----------------------------------------------------------------------------------------
+
+local pressedAt -- os.clock() while left click is down
 local beaming = false
-UserInputService.InputBegan:Connect(function(input, processed)
-	if processed then return end
-	if input.UserInputType == Enum.UserInputType.MouseButton1 and canUse() then
-		face(mouse.Hit.Position)
-		remote:FireServer("ball", mouse.Hit.Position)
-	elseif input.UserInputType == Enum.UserInputType.MouseButton2 and canUse() then
-		beaming = true
-		remote:FireServer("beam", mouse.Hit.Position)
+
+local function stopBeam()
+	if beaming then
+		beaming = false
+		remote:FireServer("beam", false)
 	end
+end
+
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed or input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+	if canUse() then pressedAt = os.clock() end
 end)
 UserInputService.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton2 and beaming then
-		beaming = false
-		remote:FireServer("beam", false)
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+	if beaming then
+		stopBeam()
+	elseif pressedAt and canUse() then
+		face(mouse.Hit.Position)
+		remote:FireServer("ball", mouse.Hit.Position)
 	end
+	pressedAt = nil
 end)
 
--- while the beam is on: keep facing the aim and tell the server where it points
 local sendT = 0
 RunService.RenderStepped:Connect(function(dt)
+	if pressedAt and not beaming and os.clock() - pressedAt >= L.HoldTime then
+		if canUse() then
+			beaming = true
+			face(mouse.Hit.Position)
+			remote:FireServer("beam", mouse.Hit.Position)
+		else
+			pressedAt = nil
+		end
+	end
 	if not beaming then return end
 	if not canUse() then
-		beaming = false
-		remote:FireServer("beam", false)
+		stopBeam()
+		pressedAt = nil
 		return
 	end
 	face(mouse.Hit.Position)
@@ -70,23 +96,32 @@ RunService.RenderStepped:Connect(function(dt)
 end)
 
 ----------------------------------------------------------------------------------------
--- beam look (every character with PowerBeam on)
+-- building blocks
 ----------------------------------------------------------------------------------------
 
-local fxFolder = Instance.new("Folder")
-fxFolder.Name = "LightningBeams"
-fxFolder.Parent = workspace
-mouse.TargetFilter = fxFolder -- aim through the beam itself
-local drawn = {} -- [character] = beam parts
-
-local function point(name)
+local function anchorPart(name, size, visible)
 	local p = Instance.new("Part")
 	p.Name = name
 	p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch, p.CastShadow = true, false, false, false, false
-	p.Transparency = 1
-	p.Size = Vector3.new(0.2, 0.2, 0.2)
+	p.Size = size or Vector3.new(0.2, 0.2, 0.2)
+	p.Transparency = visible and 0 or 1
 	p.Parent = fxFolder
 	return p
+end
+
+local function glowBall(name, size, color, transparency)
+	local p = anchorPart(name, Vector3.one * size, true)
+	p.Shape = Enum.PartType.Ball
+	p.Material = Enum.Material.Neon
+	p.Color = color
+	p.Transparency = transparency
+	return p
+end
+
+local function attach(part)
+	local a = Instance.new("Attachment")
+	a.Parent = part
+	return a
 end
 
 local function beam(a0, a1, width, color, transparency, segments)
@@ -99,91 +134,318 @@ local function beam(a0, a1, width, color, transparency, segments)
 	b.LightInfluence = 0
 	b.Brightness = 3
 	b.FaceCamera = true
-	b.Segments = segments or 10
+	b.Segments = segments or 2
 	b.Parent = a0.Parent
 	return b
 end
 
+local function sparks(parent, rate, speed, size)
+	local pe = Instance.new("ParticleEmitter")
+	pe.Color = ColorSequence.new(L.Color, Color3.new(1, 1, 1))
+	pe.LightEmission = 1
+	pe.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, size or 0.25), NumberSequenceKeypoint.new(1, 0) })
+	pe.Lifetime = NumberRange.new(0.1, 0.3)
+	pe.Speed = NumberRange.new(speed * 0.4, speed)
+	pe.SpreadAngle = Vector2.new(180, 180)
+	pe.Drag = 3
+	pe.Rate = rate
+	pe.Parent = parent
+	return pe
+end
+
+local function light(parent, brightness, range)
+	local l = Instance.new("PointLight")
+	l.Color, l.Brightness, l.Range = L.Color, brightness, range
+	l.Parent = parent
+	return l
+end
+
+local function zap(parent, pitch, volume)
+	local s = Instance.new("Sound")
+	s.SoundId = L.Sounds.Zap
+	s.PlaybackSpeed = pitch
+	s.Volume = volume
+	s.RollOffMaxDistance = 90
+	s.Parent = parent
+	return s
+end
+
+-- a crackling arc between two parts that point at each other (aimPart): each arc has its own
+-- attachments, turned randomly around the line on every rebend(), so arcs bend every which way
+local function arc(fromPart, toPart, width)
+	local s, e = attach(fromPart), attach(toPart)
+	return { s = s, e = e, b = beam(s, e, width, L.CoreColor, 0.1, 12) }
+end
+local function rebend(a, len)
+	local bend = math.min(len * 0.18, 2.5)
+	a.s.CFrame = CFrame.Angles(0, 0, rng:NextNumber(0, math.pi * 2))
+	a.e.CFrame = CFrame.Angles(0, 0, rng:NextNumber(0, math.pi * 2))
+	a.b.CurveSize0 = rng:NextNumber(-bend, bend)
+	a.b.CurveSize1 = rng:NextNumber(-bend, bend)
+	a.b.Transparency = NumberSequence.new(rng:NextNumber() < 0.25 and 1 or rng:NextNumber(0, 0.35))
+end
+local function aimPart(part, from, to)
+	if (to - from).Magnitude < 1e-3 then to = from + Vector3.new(0, 0, -0.01) end
+	part.CFrame = CFrame.lookAt(from, to)
+end
+
+----------------------------------------------------------------------------------------
+-- the beam (every character with PowerBeam on)
+----------------------------------------------------------------------------------------
+
 local function makeBeam()
-	local from, to = point("From"), point("To")
-	local d = { from = from, to = to, arcs = {} }
-	d.a0 = Instance.new("Attachment")
-	d.a0.Parent = from
-	d.a1 = Instance.new("Attachment")
-	d.a1.Parent = to
-	beam(d.a0, d.a1, 1.0, L.Color, 0.55, 2)       -- glow
-	beam(d.a0, d.a1, 0.28, L.CoreColor, 0, 2)      -- white-hot core
-	-- crackling arcs around it: new random bends every few frames
-	for i = 1, 3 do
-		local s, e = Instance.new("Attachment"), Instance.new("Attachment")
-		s.Parent, e.Parent = from, to
-		d.arcs[i] = { s = s, e = e, b = beam(s, e, 0.09, L.CoreColor, 0.1, 12) }
+	local d = { started = os.clock(), crackle = 0, arcs = {}, sounds = {} }
+	-- hands -> where the two beams meet
+	d.palmR, d.endR = anchorPart("PalmR"), anchorPart("EndR")
+	d.palmL, d.endL = anchorPart("PalmL"), anchorPart("EndL")
+	-- the orb where they meet, and the end of the big beam
+	d.orb = glowBall("Orb", 0.9, L.CoreColor, 0.05)
+	d.aura = glowBall("OrbAura", 2, L.Color, 0.65)
+	d.mid = anchorPart("Mid")
+	d.tip = anchorPart("Tip")
+	local aPR, aER, aPL, aEL = attach(d.palmR), attach(d.endR), attach(d.palmL), attach(d.endL)
+	local aM, aT = attach(d.mid), attach(d.tip) -- (the beams' own, straight attachments)
+
+	d.feeders = {
+		beam(aPR, aER, 0.55, L.Color, 0.5), beam(aPR, aER, 0.16, L.CoreColor, 0),
+		beam(aPL, aEL, 0.55, L.Color, 0.5), beam(aPL, aEL, 0.16, L.CoreColor, 0),
+	}
+	d.haze = beam(aM, aT, 3, L.Color, 0.85)
+	d.glow = beam(aM, aT, 1.4, L.Color, 0.45)
+	d.core = beam(aM, aT, 0.42, L.CoreColor, 0)
+	for _ = 1, 4 do
+		local a = arc(d.mid, d.tip, 0.08)
+		a.main = true
+		table.insert(d.arcs, a)
 	end
-	local glowFrom = Instance.new("PointLight")
-	glowFrom.Color, glowFrom.Brightness, glowFrom.Range = L.Color, 2.5, 8
-	glowFrom.Parent = from
-	local glowTo = glowFrom:Clone()
-	glowTo.Range = 12
-	glowTo.Parent = to
-	d.sparks = Instance.new("ParticleEmitter")
-	d.sparks.Color = ColorSequence.new(L.Color, Color3.new(1, 1, 1))
-	d.sparks.LightEmission = 1
-	d.sparks.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 0) })
-	d.sparks.Lifetime = NumberRange.new(0.1, 0.3)
-	d.sparks.Speed = NumberRange.new(6, 16)
-	d.sparks.SpreadAngle = Vector2.new(180, 180)
-	d.sparks.Rate = 60
-	d.sparks.Parent = to
+	table.insert(d.arcs, arc(d.palmR, d.endR, 0.06))
+	table.insert(d.arcs, arc(d.palmL, d.endL, 0.06))
+
+	light(d.orb, 4, 12)
+	d.handSparksR = sparks(d.palmR, 30, 6, 0.18)
+	d.handSparksL = sparks(d.palmL, 30, 6, 0.18)
+	d.hitSparks = sparks(d.tip, 90, 22, 0.35)
+	d.hitLight = light(d.tip, 5, 14)
+	d.flash = glowBall("HitFlash", 1.2, L.CoreColor, 0.3)
+
+	-- sound: a charge-up zap, then a loop (if set) or crackling zaps
+	zap(d.orb, 0.6, 0.7):Play()
+	if L.Sounds.BeamLoop and L.Sounds.BeamLoop ~= "" then
+		local loop = Instance.new("Sound")
+		loop.SoundId, loop.Looped, loop.Volume, loop.RollOffMaxDistance = L.Sounds.BeamLoop, true, 0.6, 90
+		loop.Parent = d.orb
+		loop:Play()
+	else
+		for i = 1, 3 do d.sounds[i] = zap(i == 1 and d.orb or d.tip, 1, 0.35) end
+	end
 	return d
 end
 
+local function dropBeam(character, d)
+	for _, part in ipairs({ d.palmR, d.endR, d.palmL, d.endL, d.orb, d.aura, d.mid, d.tip, d.flash }) do part:Destroy() end
+	if character == player.Character then
+		local hum = character:FindFirstChildOfClass("Humanoid")
+		if hum then hum.CameraOffset = Vector3.zero end
+	end
+end
+
+local drawn = {} -- [character] = beam
 local rayParams = RaycastParams.new()
 rayParams.FilterType = Enum.RaycastFilterType.Exclude
-local jitter = 0
+local bendT = 0
 
-RunService.RenderStepped:Connect(function(dt)
-	jitter -= dt
-	local rebend = jitter <= 0
-	if rebend then jitter = 0.04 end
+local function palm(hand)
+	return hand.Position - hand.CFrame.UpVector * 0.3
+end
+
+local function updateBeams(dt, rebendNow)
+	local now = os.clock()
 	for _, p in ipairs(Players:GetPlayers()) do
 		local character = p.Character
 		local on = character and character:GetAttribute("PowerBeam")
-		local hand = character and character:FindFirstChild("RightHand")
+		local handR = character and character:FindFirstChild("RightHand")
+		local handL = character and character:FindFirstChild("LeftHand")
+		local root = character and character:FindFirstChild("HumanoidRootPart")
 		local aim = character and character:GetAttribute("PowerAim")
 		if p == player and beaming then aim = mouse.Hit.Position end -- your own: no delay
-		if on and hand and typeof(aim) == "Vector3" then
+		if on and handR and handL and root and typeof(aim) == "Vector3" then
 			local d = drawn[character]
 			if not d then
 				d = makeBeam()
 				drawn[character] = d
 			end
-			local start = hand.Position + hand.CFrame.UpVector * -0.3
-			local dir = aim - start
-			local range = Powers.Lightning.BeamRange
-			dir = dir.Magnitude > 0.1 and dir.Unit or character:GetPivot().LookVector
+			local pR, pL = palm(handR), palm(handL)
+			local dir = aim - (pR + pL) / 2
+			dir = dir.Magnitude > 0.1 and dir.Unit or root.CFrame.LookVector
+			local meet = (pR + pL) / 2 + dir * 1.3
 			rayParams.FilterDescendantsInstances = { character, fxFolder }
-			local hit = workspace:Raycast(start, dir * range, rayParams)
-			local stop = hit and hit.Position or start + dir * range
-			d.from.CFrame = CFrame.lookAt(start, stop)
-			d.to.CFrame = CFrame.lookAt(stop, start)
-			d.sparks.Enabled = hit ~= nil
-			if rebend then
-				local len = (stop - start).Magnitude
-				for _, arc in ipairs(d.arcs) do
-					arc.s.CFrame = CFrame.Angles(0, 0, rng:NextNumber(0, math.pi * 2))
-					arc.e.CFrame = CFrame.Angles(0, 0, rng:NextNumber(0, math.pi * 2))
-					arc.b.CurveSize0 = rng:NextNumber(-1, 1) * math.min(len * 0.15, 2.5)
-					arc.b.CurveSize1 = rng:NextNumber(-1, 1) * math.min(len * 0.15, 2.5)
-					arc.b.Transparency = NumberSequence.new(rng:NextNumber() < 0.25 and 1 or rng:NextNumber(0, 0.4))
+			local hit = workspace:Raycast(meet, dir * L.BeamRange, rayParams)
+			local stop = hit and hit.Position or meet + dir * L.BeamRange
+
+			-- grow: the hand beams reach the middle first, then the big beam shoots out
+			local age = now - d.started
+			local f = math.clamp(age / 0.15, 0, 1)
+			local g = math.clamp((age - 0.12) / 0.14, 0, 1)
+			local endR, endL = pR:Lerp(meet, f), pL:Lerp(meet, f)
+			local tip = meet:Lerp(stop, g)
+			aimPart(d.palmR, pR, endR)
+			aimPart(d.endR, endR, pR)
+			aimPart(d.palmL, pL, endL)
+			aimPart(d.endL, endL, pL)
+			aimPart(d.mid, meet, tip)
+			aimPart(d.tip, tip, meet)
+
+			-- flicker
+			local pulse = 0.85 + rng:NextNumber() * 0.35
+			local grown = f >= 1
+			d.orb.Size = Vector3.one * (grown and 0.9 * pulse or 0.01)
+			d.aura.Size = Vector3.one * (grown and 2.1 * pulse or 0.01)
+			d.orb.CFrame, d.aura.CFrame = CFrame.new(meet), CFrame.new(meet)
+			d.core.Width0, d.core.Width1 = 0.5 * pulse, 0.36 * pulse
+			d.glow.Width0, d.glow.Width1 = 1.6 * pulse, 1.2 * pulse
+			d.haze.Width0, d.haze.Width1 = 3.2 * pulse, 2.4 * pulse
+			for _, b in ipairs({ d.core, d.glow, d.haze }) do b.Enabled = g > 0 end
+			local landed = hit ~= nil and g >= 1
+			d.hitSparks.Enabled = landed
+			d.hitLight.Brightness = landed and (4 + rng:NextNumber() * 3) or 0
+			d.flash.Size = Vector3.one * (landed and rng:NextNumber(1, 1.8) or 0.01)
+			d.flash.CFrame = CFrame.new(tip)
+			if rebendNow then
+				for _, a in ipairs(d.arcs) do
+					rebend(a, a.main and (tip - meet).Magnitude or (meet - pR).Magnitude)
+					a.b.Enabled = not a.main or g > 0
 				end
+			end
+
+			-- crackle
+			if #d.sounds > 0 then
+				d.crackle -= dt
+				if d.crackle <= 0 then
+					d.crackle = rng:NextNumber(0.07, 0.14)
+					local s = d.sounds[rng:NextInteger(1, #d.sounds)]
+					s.PlaybackSpeed = rng:NextNumber(0.9, 1.5)
+					s:Play()
+				end
+			end
+			-- your own beam shakes the camera a little
+			if p == player then
+				local hum = character:FindFirstChildOfClass("Humanoid")
+				if hum then hum.CameraOffset = Vector3.new(rng:NextNumber(-0.06, 0.06), rng:NextNumber(-0.06, 0.06), 0) end
 			end
 		end
 	end
 	for character, d in pairs(drawn) do
 		if not character.Parent or not character:GetAttribute("PowerBeam") then
-			d.from:Destroy()
-			d.to:Destroy()
+			dropBeam(character, d)
 			drawn[character] = nil
 		end
 	end
+end
+
+----------------------------------------------------------------------------------------
+-- balls: arcs + aura around each one, sparks in the hands while winding up
+----------------------------------------------------------------------------------------
+
+local balls = {} -- [ball part] = { center, points, arcs }
+
+local function decorate(ball)
+	local r = ball.Size.X / 2
+	local d = { center = attach(ball), points = {}, arcs = {}, r = r }
+	local aura = Instance.new("Part")
+	aura.Shape = Enum.PartType.Ball
+	aura.Material = Enum.Material.Neon
+	aura.Color = L.Color
+	aura.Transparency = 0.7
+	aura.Size = ball.Size * 1.8
+	aura.CanCollide, aura.CanQuery, aura.CanTouch, aura.CastShadow, aura.Massless = false, false, false, false, true
+	aura.CFrame = ball.CFrame
+	local w = Instance.new("WeldConstraint")
+	w.Part0, w.Part1 = ball, aura
+	w.Parent = aura
+	aura.Parent = ball
+	for i = 1, 4 do
+		d.points[i] = attach(ball)
+		d.arcs[i] = beam(d.center, d.points[i], 0.06 + r * 0.04, L.CoreColor, 0.1, 10)
+	end
+	balls[ball] = d
+end
+
+workspace.ChildAdded:Connect(function(child)
+	if child.Name == "LightningBall" and child:IsA("BasePart") then decorate(child) end
+end)
+
+local function updateBalls(rebendNow)
+	for ball, d in pairs(balls) do
+		if not ball.Parent then
+			balls[ball] = nil
+		elseif rebendNow then
+			for i, p in ipairs(d.points) do
+				local dir = Vector3.new(rng:NextNumber(-1, 1), rng:NextNumber(-1, 1), rng:NextNumber(-1, 1))
+				dir = dir.Magnitude > 0.05 and dir.Unit or Vector3.yAxis
+				p.CFrame = CFrame.lookAt(dir * d.r * rng:NextNumber(1.6, 2.6), Vector3.zero)
+				local b = d.arcs[i]
+				b.CurveSize0, b.CurveSize1 = rng:NextNumber(-d.r, d.r), rng:NextNumber(-d.r, d.r)
+				b.Transparency = NumberSequence.new(rng:NextNumber() < 0.3 and 1 or rng:NextNumber(0, 0.3))
+			end
+		end
+	end
+end
+
+-- sparks + light in the throwing hand(s) while winding up, a burst when it lets go
+local lastPowerId = setmetatable({}, { __mode = "k" })
+local function ballFor(name)
+	for _, b in ipairs(L.Balls) do
+		if b.name == name then return b end
+	end
+	return nil
+end
+
+local function windUp(character, ball)
+	local hands = ball.hands == "B" and { "RightHand", "LeftHand" } or { ball.hands == "R" and "RightHand" or "LeftHand" }
+	for _, name in ipairs(hands) do
+		local hand = character:FindFirstChild(name)
+		if hand then
+			local a = Instance.new("Attachment")
+			a.Position = Vector3.new(0, -0.3, 0)
+			a.Parent = hand
+			local sp = sparks(a, ball.hands == "B" and 60 or 35, 5, ball.hands == "B" and 0.3 or 0.2)
+			local l = light(a, 2, ball.hands == "B" and 10 or 6)
+			local release = ball.time * ball.release
+			task.delay(release, function()
+				sp.Speed = NumberRange.new(10, 22)
+				sp:Emit(ball.hands == "B" and 30 or 15)
+				sp.Enabled = false
+				l.Brightness = 6
+				local s = zap(a, ball.hands == "B" and 0.8 or 1.35, ball.hands == "B" and 0.8 or 0.5)
+				s:Play()
+				task.delay(0.08, function() l.Enabled = false end)
+				task.delay(1, function() a:Destroy() end)
+			end)
+		end
+	end
+end
+
+local function updateWindUps()
+	for _, p in ipairs(Players:GetPlayers()) do
+		local character = p.Character
+		if character then
+			local id = character:GetAttribute("PowerId") or 0
+			if lastPowerId[character] == nil then
+				lastPowerId[character] = id
+			elseif id ~= lastPowerId[character] then
+				lastPowerId[character] = id
+				local ball = ballFor(character:GetAttribute("PowerMove") or "")
+				if ball then windUp(character, ball) end
+			end
+		end
+	end
+end
+
+RunService.RenderStepped:Connect(function(dt)
+	bendT -= dt
+	local rebendNow = bendT <= 0
+	if rebendNow then bendT = 0.04 end
+	updateBeams(dt, rebendNow)
+	updateBalls(rebendNow)
+	updateWindUps()
 end)

@@ -1,8 +1,9 @@
--- ElementPowers v1.0  (ModuleScript in ReplicatedStorage)
+-- ElementPowers v1.1  (ModuleScript in ReplicatedStorage)
 -- Elemental powers, used with empty hands (no Golden Weapon out). For now: Lightning.
---   left click:        lightning ball from the right hand -> the left hand -> a big one from
+--   tap left click:    lightning ball from the right hand -> the left hand -> a big one from
 --                      both hands that explodes
---   hold right click:  lightning beam to where you aim
+--   hold left click:   both hands out, a beam from each meets in front of you and one big
+--                      beam goes on to where you aim
 -- Settings + the arm poses (NinjaAnimator calls Step every frame, on every client).
 -- The server (ElementPowersServer) sets these attributes on the character:
 --   PowerMove + PowerId (a throw started), PowerBeam (beam on), PowerAim (where it points)
@@ -19,6 +20,7 @@ Powers.Lightning = {
 		Hit = { "rbxassetid://115899453415449", "rbxassetid://77794845234498" },
 		Final = "rbxassetid://73278613369675",
 		Zap = "rbxassetid://9114277757",
+		BeamLoop = "",            -- optional: a looping electric hum (asset id); "" = crackling zaps instead
 	},
 	BallSpeed = 110,              -- studs/s
 	BallRange = 160,              -- studs before it fizzles out
@@ -28,6 +30,7 @@ Powers.Lightning = {
 		{ name = "ballL",    time = 0.35, release = 0.45, damage = 10, size = 1.1, hands = "L" },
 		{ name = "ballBoth", time = 0.6,  release = 0.55, damage = 26, size = 2.6, hands = "B", blast = 9, final = true },
 	},
+	HoldTime = 0.22,              -- hold left click this long and it's the beam instead of a ball
 	BeamRange = 70,               -- studs
 	BeamDamage = 4,               -- per tick
 	BeamTick = 0.15,              -- seconds between damage ticks
@@ -104,16 +107,20 @@ function Powers.Step(character, root, pose, dt, armsFree)
 		if e >= 1 then st.move = nil end
 	end
 
-	-- beam: right arm straight out toward the aim, left hand braced under the wrist
+	-- beam: both arms straight out toward the aim, hands close together, trembling a little
 	local aim = character:GetAttribute("PowerAim")
 	if character:GetAttribute("PowerBeam") and typeof(aim) == "Vector3" then
 		out = out == pose and table.clone(pose) or out
 		local d = root.CFrame:VectorToObjectSpace(aim - (root.Position + Vector3.new(0, 1.5, 0)))
 		local pitch = d.Magnitude > 0.1 and math.asin(math.clamp(d.Unit.Y, -0.9, 0.9)) or 0
-		out.RightShoulder = R(math.pi / 2 + pitch, 0, 0)
-		out.RightElbow = R(0, 0, 0)
-		out.LeftShoulder = R(math.pi / 2 + pitch - 0.25, 0, 0.5) -- (+z = left arm in, toward the right hand)
-		out.LeftElbow = R(0.6, 0, 0)
+		local t = os.clock()
+		local shake = math.sin(t * 47) * 0.03 + math.sin(t * 31) * 0.02
+		-- (+z swings the right arm out and the left arm in, so both point inward)
+		out.RightShoulder = R(math.pi / 2 + pitch + shake, 0, -0.32)
+		out.RightElbow = R(0.12, 0, 0)
+		out.LeftShoulder = R(math.pi / 2 + pitch - shake, 0, 0.32)
+		out.LeftElbow = R(0.12, 0, 0)
+		out.Waist = R(0.08, 0, 0) * (out.Waist or CFrame.identity) -- lean back into it
 	end
 	return out
 end

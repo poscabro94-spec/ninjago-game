@@ -1,4 +1,4 @@
--- GoldenWeaponsServer v7.1  (Script in ServerScriptService)
+-- GoldenWeaponsServer v7.2  (Script in ServerScriptService)
 -- Gives every player the Golden Weapon of their element on spawn (slot 1) and swaps it when
 -- they switch element: Lightning = Nunchucks of Lightning, Fire = Sword of Fire,
 -- Earth = Scythe of Quakes, Ice = Shurikens of Ice. The menu can hand out several at once (player
@@ -923,24 +923,6 @@ local function buildNunchuckHolster(character, stickT)
 		w.Parent = p
 		p.Parent = folder
 	end
-	-- leather strap across the back that holds them
-	local strapColor = Color3.fromRGB(70, 45, 30)
-	local function strap(name, size, cf)
-		local s = Instance.new("Part")
-		s.Name = name
-		s.Size = size
-		bare(s)
-		s.Color = strapColor
-		s.Material = Enum.Material.Leather
-		s.CFrame = torso.CFrame * cf
-		local w = Instance.new("Weld")
-		w.Part0, w.Part1 = torso, s
-		w.C0 = cf
-		w.Parent = s
-		s.Parent = folder
-	end
-	strap("Strap", Vector3.new(0.2, 2.3, 0.06), CFrame.new(0, 0, 0.56) * CFrame.Angles(0, 0, 0.62))
-	strap("Band", Vector3.new(0.9, 0.14, 0.55), CFrame.new(0, -0.15, 0.72))
 	folder.Parent = character
 	return folder
 end

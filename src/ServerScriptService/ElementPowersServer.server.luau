@@ -1,7 +1,7 @@
--- ElementPowersServer v1.0  (Script in ServerScriptService)
+-- ElementPowersServer v1.1  (Script in ServerScriptService)
 -- The elemental powers (settings in ElementPowers). The client (ElementPowersClient) sends:
---   "ball", aim         left click: next lightning ball of the combo
---   "beam", true/false  right button down / up
+--   "ball", aim         tap left click: next lightning ball of the combo
+--   "beam", aim / false hold left click: beam on / let go: off
 --   "aim", aim          where the beam points (a few times a second while it's on)
 -- Only with empty hands, and not during Spinjitzu / dragon / Tornado of Creation.
 
@@ -73,6 +73,31 @@ local function fxSpot(pos, life)
 	return p
 end
 
+local function playSound(parent, id, volume, pitch)
+	local s = Instance.new("Sound")
+	s.SoundId, s.Volume, s.PlaybackSpeed, s.RollOffMaxDistance = id, volume, pitch or 1, 120
+	s.Parent = parent
+	s:Play()
+	Debris:AddItem(s, 4)
+	return s
+end
+
+-- a bright ball that swells and fades
+local function flash(pos, from, to, time)
+	local f = Instance.new("Part")
+	f.Shape = Enum.PartType.Ball
+	f.Material = Enum.Material.Neon
+	f.Color = L.CoreColor
+	f.Anchored, f.CanCollide, f.CanQuery, f.CanTouch, f.CastShadow = true, false, false, false, false
+	f.Transparency = 0.15
+	f.Size = Vector3.one * from
+	f.CFrame = CFrame.new(pos)
+	f.Parent = workspace
+	TweenService:Create(f, TweenInfo.new(time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Size = Vector3.one * to, Transparency = 1, Color = L.Color }):Play()
+	Debris:AddItem(f, time + 0.05)
+end
+
 local function sparks(parent, count, speed, size)
 	local pe = Instance.new("ParticleEmitter")
 	pe.Color = ColorSequence.new(L.Color, Color3.new(1, 1, 1))
@@ -99,10 +124,27 @@ local function blast(character, pos, ball)
 	local light = Instance.new("PointLight")
 	light.Color, light.Brightness, light.Range = L.Color, 6, 22
 	light.Parent = spot
-	local boom = Instance.new("Sound")
-	boom.SoundId, boom.Volume, boom.RollOffMaxDistance = L.Sounds.Final, 1, 120
-	boom.Parent = spot
-	boom:Play()
+	playSound(spot, L.Sounds.Final, 1)
+	playSound(spot, L.Sounds.Zap, 0.9, 0.55)
+	playSound(spot, L.Sounds.Zap, 0.6, 1.3)
+	flash(pos, 1, 5, 0.18)
+	-- a ring rushing out along the ground
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { character }
+	local down = workspace:Raycast(pos + Vector3.new(0, 2, 0), Vector3.new(0, -12, 0), params)
+	local ring = Instance.new("Part")
+	ring.Shape = Enum.PartType.Cylinder
+	ring.Material = Enum.Material.Neon
+	ring.Color = L.Color
+	ring.Anchored, ring.CanCollide, ring.CanQuery, ring.CanTouch, ring.CastShadow = true, false, false, false, false
+	ring.Transparency = 0.2
+	ring.Size = Vector3.new(0.2, 2, 2)
+	ring.CFrame = CFrame.new((down and down.Position or pos) + Vector3.new(0, 0.12, 0)) * CFrame.Angles(0, 0, math.pi / 2)
+	ring.Parent = workspace
+	TweenService:Create(ring, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Size = Vector3.new(0.2, ball.blast * 3.2, ball.blast * 3.2), Transparency = 1 }):Play()
+	Debris:AddItem(ring, 0.5)
 	local shell = Instance.new("Part")
 	shell.Shape = Enum.PartType.Ball
 	shell.Material = Enum.Material.Neon
@@ -195,7 +237,14 @@ local function launchBall(character, origin, dir, ball)
 			blast(character, at, ball)
 		else
 			if hum then damage(model, hum, ball.damage, false, dir * 18 + Vector3.new(0, 8, 0)) end
-			sparks(fxSpot(at, 1), 20, 18)
+			local spot = fxSpot(at, 1)
+			sparks(spot, 28, 22, 0.35)
+			flash(at, ball.size, ball.size * 3.5, 0.2)
+			local l = Instance.new("PointLight")
+			l.Color, l.Brightness, l.Range = L.Color, 5, 12
+			l.Parent = spot
+			task.delay(0.1, function() l.Enabled = false end)
+			playSound(spot, L.Sounds.Zap, 0.6, 1 + math.random() * 0.4)
 		end
 	end
 	conn = RunService.Heartbeat:Connect(function()
@@ -242,6 +291,7 @@ local function throw(player, aim)
 	whoosh.Parent = root
 	whoosh:Play()
 	Debris:AddItem(whoosh, 2)
+	if ball.hands == "B" then playSound(root, L.Sounds.Zap, 0.5, 0.7) end -- the big one charges up
 
 	task.delay(ball.time * ball.release, function()
 		if player.Character ~= character or not root.Parent then return end
@@ -286,7 +336,7 @@ RunService.Heartbeat:Connect(function()
 			b.ticks += 1
 			local aim = character:GetAttribute("PowerAim")
 			if typeof(aim) == "Vector3" then
-				local origin = root.CFrame:PointToWorldSpace(Vector3.new(0.6, 1.0, -1.8))
+				local origin = root.CFrame:PointToWorldSpace(Vector3.new(0, 1.1, -2.4)) -- where the two hand beams meet
 				local dir = aim - origin
 				if dir.Magnitude > 0.5 then
 					local params = RaycastParams.new()
