@@ -1,4 +1,4 @@
--- SpinjitzuEffect v11.1  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuEffect v11.2  (ModuleScript in ReplicatedStorage)
 -- Procedural Ninjago-style Spinjitzu tornado. Solid fuzzy body made of stacked discs of
 -- flattened smoke smears, wrapped in spinning streak rings. Narrow at the ground, wide at
 -- the top. Includes the looping sound. Rendered on every client.
@@ -194,7 +194,7 @@ function SpinjitzuEffect.new(character, color, highlight, elementName)
 	self.alive = true
 
 	local okScale, modelScale = pcall(function() return character:GetScale() end)
-	self.size = okScale and modelScale or 1
+	self.size = (okScale and modelScale or 1) * (preset.Size or 1) -- (Shatterspin is bigger)
 	self.height = Config.Height * self.size
 	self.rB = Config.BottomRadius * self.size
 	self.rT = Config.TopRadius * self.size

@@ -1,4 +1,4 @@
--- SpinjitzuDragon v17.2  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuDragon v18.0  (ModuleScript in ReplicatedStorage)
 -- Elemental dragon that appears behind the character after Spinjitzu (Rising Dragon), built from
 -- plain parts like the show's energy dragons: solid-looking panels in the element colour with thin
 -- glowing outlines. One tall column behind you: a cap-shaped faceted head on top (V seams down
@@ -353,7 +353,7 @@ end
 
 -- green-flame wisps licking up off it (fire texture in the dragon's two shades)
 function Dragon:_flames(parent, size)
-	self:_emitter(parent, {
+	return self:_emitter(parent, {
 		Texture = TEX_FIRE, Color = ColorSequence.new(self.wingCol, self.plateCol), LightEmission = 1, Brightness = 3,
 		Size = NumberSequence.new({ kp(0, 0.9 * size), kp(0.5, 1.3 * size), kp(1, 0.3 * size) }),
 		Transparency = NumberSequence.new({ kp(0, 0.6), kp(0.2, 0.15), kp(1, 1) }),
@@ -403,7 +403,10 @@ function Dragon:_facets(root, data, scale, color, bones)
 	for _, g in ipairs(data.glow or {}) do
 		local tilt = g[3]
 		local p = self:_add(root, "Part", CFrame.new(g[1] * scale) * CFrame.Angles(tilt.X, tilt.Y, tilt.Z), g[2] * scale, g[5] == "oval" and self.eyeCol or self.coreCol, g[4])
-		if g[5] == "oval" then
+		if g[5] == "mouth" then
+			-- the inside of the mouth: only lit while it's open (see Update)
+			table.insert(self.mouthParts, table.remove(self.fadeParts))
+		elseif g[5] == "oval" then
 			local mesh = Instance.new("SpecialMesh")
 			mesh.MeshType = Enum.MeshType.Sphere
 			mesh.Parent = p
@@ -451,8 +454,13 @@ function Dragon:_buildBody()
 	end
 	self.look = Vector3.yAxis
 	-- the head on top
+	self.mouthParts = {}
 	self.head = self:_piece("Head")
 	self:_facets(self.head, M.Head, self.hs)
+	-- the lower jaw: shut, swings open while you use your power
+	self.jaw = self:_piece("Jaw")
+	self:_facets(self.jaw, M.Jaw, self.hs)
+	self.jawT = 0
 	self.headFx = Instance.new("Attachment")
 	self.headFx.Parent = self.head
 	self.headFx.Position = Vector3.new(0, 0, -2 * self.hs)
@@ -462,6 +470,7 @@ function Dragon:_buildBody()
 	glow.Parent = self.head
 	self.headLight = make("PointLight", { Color = self.coreCol, Brightness = 1.5, Range = 10 * sc, Shadows = false }, glow)
 	-- energy boiling in the throat: a pulsing ball of light + sparks spilling out of the mouth
+	self.mouthFx = {}
 	self.throat = self:_emitter(glow, {
 		Texture = TEX_SPARK, Color = ColorSequence.new(WHITE, self.wingCol), LightEmission = 1, Brightness = 5,
 		Size = NumberSequence.new({ kp(0, 1.4 * self.hs), kp(0.5, 1.9 * self.hs), kp(1, 0.6 * self.hs) }),
@@ -469,13 +478,13 @@ function Dragon:_buildBody()
 		Lifetime = NumberRange.new(0.25, 0.4), Rate = 14, Speed = NumberRange.new(0), LockedToPart = true,
 		Rotation = NumberRange.new(0, 360), RotSpeed = NumberRange.new(-300, 300),
 	})
-	self:_emitter(glow, {
+	self.mouthFx[1] = self:_emitter(glow, {
 		Texture = TEX_SPARK, Color = ColorSequence.new(self.edgeCol, self.wingCol), LightEmission = 1, Brightness = 4,
 		Size = NumberSequence.new({ kp(0, 0.25 * self.hs), kp(1, 0) }),
 		Lifetime = NumberRange.new(0.3, 0.6), Rate = 30, Speed = NumberRange.new(2 * sc, 6 * sc),
 		EmissionDirection = Enum.NormalId.Front, SpreadAngle = Vector2.new(40, 40), Drag = 2,
 	})
-	self:_flames(glow, 0.8 * self.hs)
+	self.mouthFx[2] = self:_flames(glow, 0.8 * self.hs)
 	-- the eyes leave streaks of light behind them
 	for _, sx in ipairs({ 1, -1 }) do
 		local eye = Instance.new("Attachment")
@@ -648,6 +657,9 @@ function Dragon:_placeBody(rootCF, flap, effort, beat, parts, cfs)
 	local headCF = rootCF * CFrame.new(top.pos * sc) * top.rot
 		* CFrame.Angles(M.HeadPitch + math.sin(t * 2) * 0.05 + beat * 0.04 * effort, math.sin(t * 0.7) * 0.08, 0)
 	put(self.head, headCF)
+	local hinge = M.JawHinge * self.hs
+	local open = M.JawOpen * smoothstep(0, 1, self.jawT)
+	put(self.jaw, headCF * CFrame.new(hinge) * CFrame.Angles(-open, 0, 0) * CFrame.new(-hinge))
 	DragonNeck.Live[self.character] = headCF:PointToWorldSpace(M.MouthLocal * self.hs)
 	-- wings beat about the hinge at the shoulder
 	for side, wing in pairs(self.wings) do
@@ -749,6 +761,8 @@ function Dragon:Stop()
 	self.stopping = true
 	for _, pe in ipairs(self.emitters) do pe.Enabled = false end
 	for _, tr in ipairs(self.trails) do tr.Enabled = false end
+	-- it bursts into sparks as it goes
+	if self.aura then self.aura:Emit(90) end
 end
 
 -- no footsteps / jump / landing sounds while you fly (the default character sounds live in the
@@ -836,14 +850,40 @@ function Dragon:Update(dt)
 	self.flapT += dt * lerp(2.2, Config.DragonFlapSpeed or 6, effort)
 	local beat = math.sin(self.flapT)
 	local flap = beat * lerp(0.1, 0.35, effort) + 0.05 - (1 - smoothstep(0, 1, a)) * 1.0
-	-- the head looks where your power goes (beaming), straight up otherwise
+	-- the head looks where your power goes (beaming, mouth open), else at whoever you're locked
+	-- onto, else where your camera looks (other people's dragons: where they're flying); never
+	-- further round than DragonNeck.MaxTurn
 	local character = self.character
-	local aim = character:GetAttribute("PowerBeam") and character:GetAttribute("PowerAim")
-	if Powers.LocalAim and character == Players.LocalPlayer.Character then aim = Powers.LocalAim end
-	local want = typeof(aim) == "Vector3" and DragonNeck.LookAt(Model, rootCF, sc, aim) or Vector3.yAxis
-	want = want.Magnitude > 1e-3 and want.Unit or Vector3.yAxis
-	local look = self.look:Lerp(want, 1 - math.exp(-dt * 12))
+	local mine = character == Players.LocalPlayer.Character
+	local beaming = character:GetAttribute("PowerBeam") == true or (mine and Powers.LocalAim ~= nil)
+	local aim = beaming and character:GetAttribute("PowerAim")
+	if mine and Powers.LocalAim then aim = Powers.LocalAim end
+	local lock = character:FindFirstChild("DragonLock")
+	local lockRoot = lock and lock:IsA("ObjectValue") and lock.Value and lock.Value:FindFirstChild("HumanoidRootPart")
+	local center = DragonNeck.Center(self.phase == "fly" and smoothstep(0, 1, self.flyT or 0) or 0)
+	local want
+	if typeof(aim) == "Vector3" then
+		want = DragonNeck.LookAt(Model, rootCF, sc, aim)
+	elseif lockRoot then
+		want = DragonNeck.LookAt(Model, rootCF, sc, lockRoot.Position)
+	elseif mine and workspace.CurrentCamera then
+		want = rootCF:VectorToObjectSpace(workspace.CurrentCamera.CFrame.LookVector)
+	elseif speed > 5 then
+		want = rootCF:VectorToObjectSpace(self.vel)
+	else
+		want = center
+	end
+	want = DragonNeck.Clamp(want, center)
+	local look = self.look:Lerp(want, 1 - math.exp(-dt * 10))
 	self.look = look.Magnitude > 0.05 and look.Unit or want
+	self.flyT = approach(self.flyT or 0, self.phase == "fly" and 1 or 0, dt * 1.5)
+	-- the jaw opens while you use your power
+	self.jawT = approach(self.jawT, beaming and not self.stopping and 1 or 0, dt * (beaming and 7 or 4))
+	local lit = a * smoothstep(0, 1, self.jawT)
+	if math.abs(lit - (self.mouthLit or -1)) > 0.01 then
+		self.mouthLit = lit
+		for _, mp in ipairs(self.mouthParts) do mp[1].Transparency = 1 - (1 - mp[2]) * lit end
+	end
 	-- speed lines when you go faster than flying normally does (Shift)
 	local boost = math.clamp((speed - (Config.DragonFlySpeed or 50) * 1.1) / 20, 0, 1)
 	local parts, cfs = {}, {} -- moved together with one BulkMoveTo
@@ -868,16 +908,178 @@ function Dragon:Update(dt)
 	self:_updateArcs(dt, a, effort)
 	self:_updateRings(a, effort)
 	if self.throat then
-		self.throat.Rate = 14 + 10 * math.sin(t * 9)
+		local open = self.stopping and 0 or smoothstep(0, 1, self.jawT)
+		self.throat.Rate = (14 + 10 * math.sin(t * 9)) * open
+		self.mouthFx[1].Rate, self.mouthFx[2].Rate = 30 * open, 22 * open
 	end
 	if self.light then
 		self.light.Brightness = 2 * a * (0.85 + 0.15 * math.sin(t * 7))
 	end
-	if self.headLight then self.headLight.Brightness = 1.5 * a end
+	if self.headLight then self.headLight.Brightness = 2.5 * (self.mouthLit or 0) end
 	for s in pairs(self.muted) do
 		if s.Volume ~= 0 then s.Volume = 0 end
 	end
 	return true
+end
+
+----------------------------------------------------------------------------------------
+-- the landing: a superhero landing (one knee down, a fist on the floor, the other arm back) and
+-- an impact for everyone to see: flash, shockwaves, cracks, flying rocks, dust, sparks
+----------------------------------------------------------------------------------------
+
+local LAND_POSE = { -- (Root drops you down + leans you forward)
+	Root          = CFrame.new(0, -1.0, -0.25) * CFrame.Angles(-0.45, 0, 0),
+	Waist         = CFrame.Angles(-0.15, 0, 0),
+	RightHip      = CFrame.Angles(-0.75, 0, 0.05),   -- knee down behind you
+	LeftHip       = CFrame.Angles(1.55, 0, -0.05),   -- foot planted in front
+	RightShoulder = CFrame.Angles(0.7, 0, 0.12),     -- fist on the floor
+	LeftShoulder  = CFrame.Angles(-0.6, 0, -0.9),    -- arm flung out back
+}
+local LAND_TIME = 1.1
+local LAND_JOINTS = { Root = true, Waist = true, RightHip = true, LeftHip = true, RightShoulder = true, LeftShoulder = true }
+local BOOM = "rbxassetid://73278613369675"
+
+local Landing = {}
+Landing.__index = Landing
+
+local function tweenOut(inst, time, props)
+	game:GetService("TweenService"):Create(inst, TweenInfo.new(time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props):Play()
+end
+
+function Dragon.Land(character)
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root then return nil end
+	local self = setmetatable({ character = character, t = 0, motors = {} }, Landing)
+	for _, m in ipairs(character:GetDescendants()) do
+		local isMotor, isAnim = m:IsA("Motor6D"), m:IsA("AnimationConstraint")
+		if isMotor or isAnim then
+			local key = (m.Name:gsub(" ", ""))
+			key = JOINT_ALIAS[key] or key
+			local c0 = isMotor and m.C0 or (m.Attachment0 and m.Attachment0.CFrame)
+			if LAND_JOINTS[key] and c0 then self.motors[key] = { motor = m, rot = c0.Rotation } end
+		end
+	end
+
+	-- the impact, where you hit the floor
+	local element = character:GetAttribute("SpinjitzuElement")
+	local preset = element and Config.Presets[element] or {}
+	local col = preset.DragonWing or character:GetAttribute("SpinjitzuColor") or Config.Color
+	local deep = preset.DragonPlate or col
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { character, getFxFolder() }
+	local hit = workspace:Raycast(root.Position, Vector3.new(0, -12, 0), params)
+	local ground = hit and hit.Position or (root.Position - Vector3.new(0, 3, 0))
+	local floorCol = hit and hit.Instance.Color or Color3.fromRGB(120, 120, 120)
+	local folder = Instance.new("Folder")
+	folder.Name = "DragonLanding"
+	folder.Parent = getFxFolder()
+	game:GetService("Debris"):AddItem(folder, 4)
+	local function part(props)
+		local p = newPart("Part", folder, props)
+		return p
+	end
+	-- flash
+	local flash = part({ Shape = Enum.PartType.Ball, Color = WHITE:Lerp(col, 0.3), Size = Vector3.new(2, 2, 2), Transparency = 0.1 })
+	flash.CFrame = CFrame.new(ground + Vector3.new(0, 1, 0))
+	tweenOut(flash, 0.3, { Size = Vector3.new(16, 16, 16), Transparency = 1 })
+	-- shockwaves rushing out along the floor
+	for i, w in ipairs({ { 0.35, 34, WHITE }, { 0.6, 26, col }, { 0.9, 18, deep } }) do
+		local ring = part({ Shape = Enum.PartType.Cylinder, Color = w[3], Size = Vector3.new(0.15, 2, 2), Transparency = 0.15 })
+		ring.CFrame = CFrame.new(ground + Vector3.new(0, 0.08 + i * 0.02, 0)) * CFrame.Angles(0, 0, math.pi / 2)
+		tweenOut(ring, w[1], { Size = Vector3.new(0.15, w[2], w[2]), Transparency = 1 })
+	end
+	-- cracks spreading out from where you hit
+	for i = 1, 9 do
+		local ang = (i / 9 + math.random() * 0.06) * math.pi * 2
+		local len = 3 + math.random() * 4.5
+		local dir = Vector3.new(math.cos(ang), 0, math.sin(ang))
+		local crack = part({ Color = Color3.fromRGB(25, 25, 28), Material = Enum.Material.Slate, Transparency = 0,
+			Size = Vector3.new(0.35 + math.random() * 0.3, 0.06, len) })
+		crack.CFrame = CFrame.lookAt(ground + dir * (len / 2 + 0.6) + Vector3.new(0, 0.04, 0), ground + dir * 20 + Vector3.new(0, 0.04, 0))
+		local glow = part({ Color = col, Transparency = 0.1, Size = Vector3.new(0.12, 0.08, len * 0.9) })
+		glow.CFrame = crack.CFrame + Vector3.new(0, 0.02, 0)
+		tweenOut(glow, 1.5, { Transparency = 1 })
+		task.delay(2.2, function() if crack.Parent then tweenOut(crack, 1.2, { Transparency = 1 }) end end)
+	end
+	-- chunks of floor flung up
+	for _ = 1, 12 do
+		local sz = 0.35 + math.random() * 0.6
+		local rock = newPart("Part", folder, { Material = Enum.Material.Slate, Color = floorCol:Lerp(Color3.new(0, 0, 0), 0.3),
+			Size = Vector3.new(sz, sz * 0.8, sz), Transparency = 0 })
+		rock.Anchored, rock.CanCollide = false, true
+		local ang = math.random() * math.pi * 2
+		rock.CFrame = CFrame.new(ground + Vector3.new(math.cos(ang), 0.6, math.sin(ang)) * 1.5) * CFrame.Angles(math.random(), math.random(), math.random())
+		rock.AssemblyLinearVelocity = Vector3.new(math.cos(ang) * (10 + math.random() * 14), 22 + math.random() * 18, math.sin(ang) * (10 + math.random() * 14))
+		rock.AssemblyAngularVelocity = Vector3.new(math.random() * 20 - 10, math.random() * 20 - 10, math.random() * 20 - 10)
+		task.delay(2.4, function() if rock.Parent then tweenOut(rock, 0.8, { Transparency = 1 }) end end)
+	end
+	-- dust rolling out + sparks flying up
+	local at = Instance.new("Attachment")
+	local anchor = part({ Size = Vector3.new(1, 1, 1) })
+	anchor.CFrame = CFrame.new(ground + Vector3.new(0, 0.5, 0))
+	at.Parent = anchor
+	local dust = make("ParticleEmitter", {
+		Texture = TEX_SMOKE, Color = ColorSequence.new(floorCol:Lerp(WHITE, 0.5)), LightInfluence = 0.6, Brightness = 1,
+		Size = NumberSequence.new({ kp(0, 2), kp(1, 6) }), Transparency = NumberSequence.new({ kp(0, 0.3), kp(1, 1) }),
+		Lifetime = NumberRange.new(0.8, 1.6), Speed = NumberRange.new(18, 30), Drag = 3, Enabled = false,
+		EmissionDirection = Enum.NormalId.Top, SpreadAngle = Vector2.new(85, 85),
+		Rotation = NumberRange.new(0, 360), RotSpeed = NumberRange.new(-60, 60),
+	}, at)
+	local sparks = make("ParticleEmitter", {
+		Texture = TEX_SPARK, Color = ColorSequence.new(WHITE, col), LightEmission = 1, Brightness = 4, LightInfluence = 0,
+		Orientation = Enum.ParticleOrientation.VelocityParallel, Squash = NumberSequence.new(2.5),
+		Size = NumberSequence.new({ kp(0, 0.35), kp(1, 0) }), Lifetime = NumberRange.new(0.4, 0.9),
+		Speed = NumberRange.new(25, 50), Drag = 2, Acceleration = Vector3.new(0, -30, 0), Enabled = false,
+		EmissionDirection = Enum.NormalId.Top, SpreadAngle = Vector2.new(70, 70),
+	}, at)
+	dust:Emit(45)
+	sparks:Emit(70)
+	make("PointLight", { Color = col, Brightness = 6, Range = 22, Shadows = false }, at)
+	tweenOut(at:FindFirstChildOfClass("PointLight"), 0.8, { Brightness = 0 })
+	local boom = make("Sound", { SoundId = BOOM, Volume = 0.9, PlaybackSpeed = 0.8, RollOffMaxDistance = 150 }, anchor)
+	boom:Play()
+	-- your own screen shakes
+	if character == Players.LocalPlayer.Character then
+		self.shake = character:FindFirstChildOfClass("Humanoid")
+	end
+	return self
+end
+
+-- false once it's over
+function Landing:Update(dt)
+	self.t += dt
+	if self.shake and self.shake.Parent then
+		local k = math.max(0, 1 - self.t / 0.45)
+		self.shake.CameraOffset = k > 0 and Vector3.new(math.random() - 0.5, math.random() - 0.5, 0) * 1.2 * k or Vector3.zero
+	end
+	if self.t >= LAND_TIME then
+		self:Destroy()
+		return false
+	end
+	return true
+end
+
+function Landing:ApplyPose()
+	local w = smoothstep(0, 0.06, self.t) * (1 - smoothstep(LAND_TIME - 0.35, LAND_TIME, self.t))
+	for key, j in pairs(self.motors) do
+		local m = j.motor
+		if m.Parent then
+			local cur = m.Transform
+			local base = (j.last and cur == j.last) and CFrame.identity or cur
+			local out = base:Lerp(j.rot:Inverse() * LAND_POSE[key] * j.rot, w)
+			if out ~= cur then m.Transform = out end
+			j.last = out
+		end
+	end
+end
+
+function Landing:Destroy()
+	for _, j in pairs(self.motors) do
+		if j.last and j.motor.Parent and j.motor.Transform == j.last then j.motor.Transform = CFrame.identity end
+	end
+	self.motors = {}
+	if self.shake and self.shake.Parent then self.shake.CameraOffset = Vector3.zero end
 end
 
 return Dragon

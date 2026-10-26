@@ -318,7 +318,8 @@ function Powers.DragonMouth(character)
 	local okS, s = pcall(function() return character:GetScale() end)
 	local scale = (okS and s or 1) * (okC and Config.DragonScale or 1)
 	local aim = character:GetAttribute("PowerBeam") and character:GetAttribute("PowerAim")
-	local look = typeof(aim) == "Vector3" and DragonNeck.LookAt(DragonModel, root.CFrame, scale, aim) or nil
+	local center = DragonNeck.Center(phase == "fly" and 1 or 0)
+	local look = typeof(aim) == "Vector3" and DragonNeck.Clamp(DragonNeck.LookAt(DragonModel, root.CFrame, scale, aim), center) or center
 	return root.CFrame:PointToWorldSpace(DragonNeck.Mouth(DragonModel, look) * scale)
 end
 

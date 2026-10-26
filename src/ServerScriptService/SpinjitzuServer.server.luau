@@ -1,12 +1,14 @@
--- SpinjitzuServer v7.1  (Script in ServerScriptService)
+-- SpinjitzuServer v8.0  (Script in ServerScriptService)
 -- Toggles Spinjitzu on the character (every client renders it), handles element
--- switching (E), the speed boost, and the Dragon move (R): spin -> rise straight up -> free flight.
+-- switching (E), the speed boost, Shatterspin (X, see Shatterspin) and the Dragon move (R):
+-- spin -> rise straight up -> DragonFlyTime seconds of flight -> land (R again lands early).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 local Config = require(ReplicatedStorage:WaitForChild("SpinjitzuConfig"))
 local Creation = require(script.Parent:WaitForChild("SpinjitzuCreation"))
+local Shatter = require(script.Parent:WaitForChild("Shatterspin"))
 
 local remote = ReplicatedStorage:FindFirstChild("SpinjitzuToggle")
 if not remote then
@@ -37,12 +39,37 @@ local function restoreSpeed(character, humanoid)
 	character:SetAttribute("SpinjitzuBaseSpeed", nil)
 end
 
--- Dragon: "spin" (Spinjitzu) -> "rise" (dragon appears, straight up) -> "fly" (free); R again ends it
+-- Dragon: "spin" (Spinjitzu) -> "rise" (dragon appears, straight up) -> "fly" -> "land" (you dive
+-- to the floor; your client says "landed" when you hit it, everyone plays the landing)
 local function endDragon(character)
 	character:SetAttribute("DragonToken", (character:GetAttribute("DragonToken") or 0) + 1)
 	character:SetAttribute("DragonPhase", nil)
+	character:SetAttribute("DragonEnds", nil)
 	character:SetAttribute("SpinjitzuActive", false)
+	Shatter.unlock(character)
 end
+
+local function landed(character)
+	if character:GetAttribute("DragonPhase") ~= "land" then return end
+	endDragon(character)
+	character:SetAttribute("DragonLanded", (character:GetAttribute("DragonLanded") or 0) + 1)
+end
+
+local function land(character)
+	local phase = character:GetAttribute("DragonPhase")
+	if phase ~= "rise" and phase ~= "fly" then return end
+	local token = character:GetAttribute("DragonToken")
+	character:SetAttribute("DragonPhase", "land")
+	character:SetAttribute("DragonEnds", nil)
+	Shatter.unlock(character)
+	-- (in case the client never says it landed)
+	task.delay(4, function()
+		if character:GetAttribute("DragonToken") == token then landed(character) end
+	end)
+end
+
+-- flew into a Shatterspinner you were locked onto: you land
+Shatter.onCounter = function(rider) land(rider) end
 
 local function startDragon(player, character, humanoid)
 	applyLook(player, character)
@@ -58,6 +85,11 @@ local function startDragon(player, character, humanoid)
 		task.delay(Config.DragonRiseTime or 3, function()
 			if character:GetAttribute("DragonToken") ~= token or character:GetAttribute("DragonPhase") ~= "rise" then return end
 			character:SetAttribute("DragonPhase", "fly")
+			local flyTime = Config.DragonFlyTime or 6
+			character:SetAttribute("DragonEnds", workspace:GetServerTimeNow() + flyTime)
+			task.delay(flyTime, function()
+				if character:GetAttribute("DragonToken") == token then land(character) end
+			end)
 		end)
 	end)
 end
@@ -121,17 +153,40 @@ remote.OnServerEvent:Connect(function(player, action)
 		return
 	end
 
+	if action == "landed" then
+		landed(character)
+		return
+	end
+
 	if action == "dragon" then
-		if character:GetAttribute("DragonPhase") then
+		local phase = character:GetAttribute("DragonPhase")
+		if phase == "rise" or phase == "fly" then
+			land(character)
+		elseif phase == "spin" then
 			endDragon(character)
-		else
+		elseif not phase and not character:GetAttribute("Shatterspin") then
 			startDragon(player, character, humanoid)
 		end
 		return
 	end
 
-	-- plain Spinjitzu toggle (ignored while the dragon is out)
-	if character:GetAttribute("DragonPhase") then return end
+	if action == "shatter" then
+		if character:GetAttribute("DragonPhase") then return end
+		if character:GetAttribute("Shatterspin") then
+			Shatter.stop(character)
+		else
+			if character:GetAttribute("SpinjitzuActive") then -- (plain Spinjitzu off first)
+				character:SetAttribute("SpinjitzuActive", false)
+				restoreSpeed(character, humanoid)
+			end
+			local why = Shatter.start(character, humanoid)
+			if why then remote:FireClient(player, "notify", why) end
+		end
+		return
+	end
+
+	-- plain Spinjitzu toggle (ignored while the dragon is out / Shatterspinning)
+	if character:GetAttribute("DragonPhase") or character:GetAttribute("Shatterspin") then return end
 	local turningOn = character:GetAttribute("SpinjitzuActive") ~= true
 	if turningOn then applyLook(player, character) end
 	character:SetAttribute("SpinjitzuActive", turningOn)
@@ -153,6 +208,7 @@ local function onCharacter(character)
 	if humanoid then
 		humanoid.Died:Connect(function()
 			endDragon(character)
+			Shatter.stop(character)
 		end)
 	end
 end

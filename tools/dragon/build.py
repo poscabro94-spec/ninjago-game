@@ -47,16 +47,18 @@ def main():
     for k in DRIPS:
         assert k in W, "wing point %s doesn't exist" % k
     pts = "\n".join("\t\t%s = %s," % (k, vec(v)) for k, v in W.items())
-    src = f'''-- DragonModel v4.1  (ModuleScript in ReplicatedStorage) -- GENERATED, don't edit by hand:
+    src = f'''-- DragonModel v4.2  (ModuleScript in ReplicatedStorage) -- GENERATED, don't edit by hand:
 -- change tools/dragon/facet.py and run build.py (python facet.py out renders it).
 -- The Rising Dragon, built from plain parts by SpinjitzuDragon: flat see-through glowing facets
 -- with thick bright outlines, one tall column behind you. Studs at DragonScale 1.
 --   Head: head space (origin at the neck joint, -Z = snout), turned to point up the column.
+--   Jaw: the lower jaw, shut, in head space (it swings open about JawHinge).
+--   glow shapes: "block" / "oval" (eyes) / "mouth" (the inside of the mouth: lit only while open)
 --   Body: neck + body + tail chevron plates, root space (+Z = behind you, the column runs up Y).
 --   Wing: the right wing, flat in X-Y, origin at its hinge, +X out (the left one is the mirror).
 
 return {{
-{piece("Head", F.build_head())}{piece("Body", F.build_body())}{piece("Wing", F.build_wing())}
+{piece("Head", F.build_head())}{piece("Jaw", F.build_jaw())}{piece("Body", F.build_body())}{piece("Wing", F.build_wing())}
 	-- the tail: segments that swing (joint i = where segment i hangs from, root space; segment i's
 	-- triangles are relative to its joint; the last joint is the tip)
 	TailJoints = {{ {", ".join(vec(j) for j in joints)} }},
@@ -73,6 +75,8 @@ return {{
 	NeckTop = {vec(F.NECK_TOP)}, -- where the head sits (root space)
 	HeadPitch = {n(F.HEAD_PITCH)}, -- snout turned up the column
 	HeadScale = {F.HEAD_SCALE},
+	JawHinge = {vec(F.JAW_HINGE)}, -- the jaw (built shut) swings open about this (head space)
+	JawOpen = {n(F.JAW_OPEN)}, -- how far it opens (radians)
 	Mouth = {vec(F.mouth())}, -- the middle of the open mouth (root space, head at rest): powers come out here
 	MouthLocal = {vec(F.MOUTH)}, -- the same in head space (unscaled)
 	TailTip = {vec(F.TAIL_TIP)},

@@ -1,4 +1,4 @@
--- StatusEffects v1.2  (ModuleScript in ServerScriptService)
+-- StatusEffects v1.3  (ModuleScript in ServerScriptService)
 -- What the elemental powers leave behind on whoever they hit:
 --   burn(W, model, hum, seconds, damage)   on fire: `damage` every second
 --   shock(W, model, hum, seconds, damage)  electrocuted: flickering glow + `damage` every second
@@ -235,10 +235,12 @@ function Status.blast(model, from, power)
 	throwRoot(model, away * (power or 70) + Vector3.new(0, 25, 0))
 end
 
--- can this power hit that model? (not yourself, not the demo / Spinjitzu bots)
+-- can this power hit that model? (not yourself, not the demo / Spinjitzu bots, not someone
+-- Shatterspinning: nothing touches them, see Shatterspin)
 function Status.target(model, attacker)
 	local hum = model and model:FindFirstChildOfClass("Humanoid")
-	if hum and model ~= attacker and hum.Health > 0 and not CollectionService:HasTag(model, "SpinjitzuNPC") then
+	if hum and model ~= attacker and hum.Health > 0 and not CollectionService:HasTag(model, "SpinjitzuNPC")
+		and not model:GetAttribute("Shatterspin") then
 		return hum
 	end
 	return nil

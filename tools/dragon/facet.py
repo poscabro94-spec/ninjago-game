@@ -81,10 +81,13 @@ def loft_piece(p, rings, tip, back=None, th=0.05):
             p.tri(b, a, back)
 
 
-def _jaw_turn():
-    c, s = math.cos(-JAW_OPEN), math.sin(-JAW_OPEN)
+def _jaw_turn(open_=None):
+    a = JAW_OPEN if open_ is None else open_
+    c, s = math.cos(-a), math.sin(-a)
     R = np.array([[1, 0, 0], [0, c, -s], [0, s, c]])
-    return lambda v: JAW_HINGE + R @ (v - JAW_HINGE)
+    f = lambda v: JAW_HINGE + R @ (v - JAW_HINGE)
+    f.R = R
+    return f
 
 
 def plate(p, c, size, tilt, th=0.045):
@@ -97,13 +100,11 @@ def plate(p, c, size, tilt, th=0.045):
         p.edge(P[i], P[j], th)
 
 
-def build_head():
+def build_head(open_=None):
+    """the skull (head space); with open_ (radians) the jaw is merged in, opened that far (for the
+    previews). The game moves the jaw itself: build_jaw()."""
     p = Piece()
     loft_piece(p, [head_ring(*r) for r in SKULL], SKULL_TIP, back=V(0, 0.1, 0.55))
-    # lower jaw, wide open
-    turn = _jaw_turn()
-    jaw = [[turn(q) for q in head_ring(z, w, top, bot, chevron=0.0)] for z, w, top, bot in JAW]
-    loft_piece(p, jaw, turn(JAW_TIP), back=turn(V(0, -0.7, 0.45)))
     # stubby horns at the back corners
     for sx in (1, -1):
         a, b, tip = V(sx * 1.1, 0.7, 0.35), V(sx * 1.15, 0.05, 0.3), V(sx * 1.7, 0.6, 1.0)
@@ -116,35 +117,19 @@ def build_head():
     for z in (-0.25, -0.95, -1.65):
         plate(p, V(0, 1.15, z), V(0.12, 0.38, 0.62), V(-0.5, 0, 0))
     plate(p, V(0, 0.72, -3.0), V(0.5, 0.2, 1.15), V(0.18, 0, 0))
-    # the inside of the mouth is white: the roof, the floor, the gums the teeth grow from and the
-    # back of the throat (the gap between the jaws stays open)
-    p.glow.append((V(0, -0.43, -1.75), V(1.15, 0.04, 3.1), V(0, 0, 0), 0, "block"))         # roof
-    jc = turn(V(0, -0.41, -1.75))
-    p.glow.append((jc, V(1.05, 0.04, 3.1), V(-JAW_OPEN, 0, 0), 0, "block"))                # floor
+    # the inside of the mouth is white: the roof, the gums the teeth grow from and the back of
+    # the throat ("mouth" glow: only lit while the mouth is open)
+    p.glow.append((V(0, -0.43, -1.75), V(1.15, 0.04, 3.1), V(0, 0, 0), 0, "mouth"))         # roof
+    p.glow.append((V(0, -0.6, 0.12), V(1.1, 0.4, 0.05), V(0, 0, 0), 0, "mouth"))           # throat
     for sx in (1, -1):
-        p.glow.append((V(sx * 0.56, -0.5, -1.85), V(0.05, 0.16, 2.9), V(0, 0, 0), 0, "block"))     # upper gums
-        p.glow.append((turn(V(sx * 0.54, -0.35, -1.75)), V(0.05, 0.16, 2.7), V(-JAW_OPEN, 0, 0), 0, "block"))  # lower
-    throat = [V(-0.55, -0.42, 0.05), V(0.55, -0.42, 0.05), turn(V(0.55, -0.42, 0.1)), turn(V(-0.55, -0.42, 0.1))]
-    p.gtris.append((throat[0], throat[1], throat[2])); p.gtris.append((throat[0], throat[2], throat[3]))
-    # ... with jagged teeth along both jaws (solid, so they stand out against the light)
+        p.glow.append((V(sx * 0.56, -0.5, -1.85), V(0.05, 0.16, 2.9), V(0, 0, 0), 0, "mouth"))     # upper gums
+    # ... with jagged teeth (solid, so they stand out against the light)
     for sx in (1, -1):
         for i, z in enumerate([-0.55, -1.0, -1.45, -1.9, -2.35, -2.8, -3.2]):
             ln = 0.38 if i % 2 == 0 else 0.26
             x = sx * (0.62 - 0.03 * i)
             a, b, tip = V(x, -0.4, z + 0.2), V(x, -0.4, z - 0.2), V(x, -0.4 - ln, z - 0.05)
             p.teeth.append((a, b, tip))
-        for i, z in enumerate([-0.5, -0.95, -1.4, -1.85, -2.3, -2.75]):
-            ln = 0.32 if i % 2 == 0 else 0.22
-            x = sx * (0.6 - 0.03 * i)
-            a, b, tip = turn(V(x, -0.42, z + 0.2)), turn(V(x, -0.42, z - 0.2)), turn(V(x, -0.42 + ln, z - 0.05))
-            p.teeth.append((a, b, tip))
-    # jawline: bumpy plates along the outside of the lower jaw, a block at each jaw angle, a chin
-    for sx in (1, -1):
-        for z, s in ((-0.6, 0.85), (-1.6, 0.75), (-2.5, 0.6)):
-            c = turn(V(sx * (0.95 if z > -1 else 0.82 if z > -2 else 0.66), -0.82, z))
-            plate(p, c, V(0.32, 0.38 * s, 0.85), V(-JAW_OPEN, sx * 0.08, sx * 0.25))
-        plate(p, turn(V(sx * 1.05, -0.95, 0.35)), V(0.45, 0.6, 0.6), V(-JAW_OPEN, sx * 0.15, sx * 0.15))
-    plate(p, turn(V(0, -0.85, -3.5)), V(0.55, 0.3, 0.55), V(-JAW_OPEN + 0.25, 0, 0))
     # eyes: glowing white ovals set into sockets framed by plates (brow above, cheekbone below,
     # a plate in front and behind), so they peek out instead of sitting on a flat face
     for sx in (1, -1):
@@ -152,6 +137,36 @@ def build_head():
         plate(p, V(sx * 1.22, 0.2, -1.4), V(0.3, 0.2, 1.05), V(0, sx * 0.25, -sx * 0.35))     # cheekbone / lower lid
         plate(p, V(sx * 1.18, 0.5, -0.82), V(0.32, 0.5, 0.22), V(0, sx * 0.25, 0))           # behind the eye
         plate(p, V(sx * 1.12, 0.46, -1.98), V(0.28, 0.36, 0.2), V(0, sx * 0.3, 0))           # in front
+    if open_ is not None:
+        j = build_jaw()
+        turn = _jaw_turn(open_)
+        R = turn.R
+        p.tris += [tuple(turn(v) for v in t) for t in j.tris]
+        p.edges += [(turn(a), turn(b), th) for a, b, th in j.edges]
+        p.teeth += [tuple(turn(v) for v in t) for t in j.teeth]
+        p.glow += [(turn(c), sz, tilt - V(open_, 0, 0), tr, kind) for c, sz, tilt, tr, kind in j.glow]
+    return p
+
+
+def build_jaw():
+    """the lower jaw, shut (head space): the game swings it open about JAW_HINGE"""
+    p = Piece()
+    jaw = [head_ring(z, w, top, bot, chevron=0.0) for z, w, top, bot in JAW]
+    loft_piece(p, jaw, JAW_TIP, back=V(0, -0.7, 0.45))
+    p.glow.append((V(0, -0.41, -1.75), V(1.05, 0.04, 3.1), V(0, 0, 0), 0, "mouth"))       # floor
+    for sx in (1, -1):
+        p.glow.append((V(sx * 0.54, -0.35, -1.75), V(0.05, 0.16, 2.7), V(0, 0, 0), 0, "mouth"))  # lower gums
+        for i, z in enumerate([-0.5, -0.95, -1.4, -1.85, -2.3, -2.75]):
+            ln = 0.32 if i % 2 == 0 else 0.22
+            x = sx * (0.6 - 0.03 * i)
+            p.teeth.append((V(x, -0.42, z + 0.2), V(x, -0.42, z - 0.2), V(x, -0.42 + ln, z - 0.05)))
+    # jawline: bumpy plates along the outside, a block at each jaw angle, a chin
+    for sx in (1, -1):
+        for z, s in ((-0.6, 0.85), (-1.6, 0.75), (-2.5, 0.6)):
+            c = V(sx * (0.95 if z > -1 else 0.82 if z > -2 else 0.66), -0.82, z)
+            plate(p, c, V(0.32, 0.38 * s, 0.85), V(0, sx * 0.08, sx * 0.25))
+        plate(p, V(sx * 1.05, -0.95, 0.35), V(0.45, 0.6, 0.6), V(0, sx * 0.15, sx * 0.15))
+    plate(p, V(0, -0.85, -3.5), V(0.55, 0.3, 0.55), V(0.25, 0, 0))
     return p
 
 
@@ -409,7 +424,7 @@ def placed(flap=0.0, look=None):
     for (R, pos), s in zip(chain, nsegs):
         out.append((s, (R, pos)))
     R, pos = chain[-1]
-    out.append((build_head(), mul((R, pos), ang(HEAD_PITCH, 0, 0), (np.eye(3) * HEAD_SCALE, np.zeros(3)))))
+    out.append((build_head(JAW_OPEN), mul((R, pos), ang(HEAD_PITCH, 0, 0), (np.eye(3) * HEAD_SCALE, np.zeros(3)))))
     w = build_wing()
     for side in (1, -1):
         hinge = mul(T([side * HINGE[0], HINGE[1], HINGE[2]]), ang(0, -side * HINGE_YAW, 0), ang(0, 0, side * (WING_RAISE + flap)))
@@ -437,7 +452,7 @@ if __name__ == "__main__":
         return [sc.render(v, span=span, center=center) for v in views]
     hover = (np.eye(3), np.zeros(3))
     sc = Scene()
-    m, hot, glow = to_mesh(build_head(), G, tube)
+    m, hot, glow = to_mesh(build_head(float(os.environ.get("JAW", JAW_OPEN))), G, tube)
     up = mul(T([0, 0, 0]), ang(HEAD_PITCH, 0, 0))
     sc.mesh(glow, up, (255, 255, 255), (0, 0, 0))
     sc.mesh(m, up, (45, 60, 240), (0, 0, 0))

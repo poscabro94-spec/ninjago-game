@@ -1,6 +1,7 @@
--- SpinjitzuClient v10.2  (LocalScript in StarterPlayer > StarterPlayerScripts)
--- Q toggles Spinjitzu, E switches element, R does the Dragon (spin -> rise -> free flight).
--- While flying: WASD moves where the camera looks, Space up, Ctrl down, hold Shift to go faster.
+-- SpinjitzuClient v11.0  (LocalScript in StarterPlayer > StarterPlayerScripts)
+-- Q toggles Spinjitzu, X Shatterspin, E switches element, R does the Dragon (spin -> rise -> 6s of
+-- flight -> landing). Flying, you keep going where the camera looks (A/D drift, Space up, Ctrl down,
+-- Shift faster); lock onto a Shatterspinner and the camera keeps them in front of you.
 -- Renders the tornado / dragon for every player (and NPCs tagged "SpinjitzuNPC"),
 -- drives the character spin, limb poses, and your own dragon flight.
 
@@ -82,6 +83,15 @@ end
 ----------------------------------------------------------------------------------------
 
 local flight = nil
+local playLanding -- (below)
+local lockBlend = 0 -- 0..1: how much the lock-on camera / steering has taken over
+
+-- the root of the Shatterspinner you're locked onto (nil = none)
+local function lockTarget(character)
+	local v = character and character:FindFirstChild("DragonLock")
+	local target = v and v:IsA("ObjectValue") and v.Value
+	return target and target.Parent and target:FindFirstChild("HumanoidRootPart") or nil
+end
 
 local function groundBelow(character, pos, dist)
 	local params = RaycastParams.new()
@@ -181,6 +191,16 @@ local function flightStart(character)
 	ao.CFrame = CFrame.lookAt(Vector3.zero, heading)
 end
 
+-- superhero landings (yours + everyone else's), see Dragon.Land
+local landings = {} -- [character] = landing
+local landedAt = {} -- [character] = os.clock() of the last one played (yours plays before the server says)
+playLanding = function(character)
+	if landedAt[character] and os.clock() - landedAt[character] < 1.5 then return end
+	landedAt[character] = os.clock()
+	if landings[character] then landings[character]:Destroy() end
+	landings[character] = Dragon.Land(character)
+end
+
 local function flightUpdate(dt)
 	if not flight then return end
 	local character = flight.character
@@ -210,14 +230,20 @@ local function flightUpdate(dt)
 		local fast = speed * (1 + ((Config.DragonBoost or 1.9) - 1) * flight.boost)
 		local camCF = workspace.CurrentCamera.CFrame
 		local camLook = camCF.LookVector
+		-- locked onto a Shatterspinner: you fly straight at them
+		local lockRoot = lockTarget(character)
+		if lockRoot then
+			local to = lockRoot.Position - pos
+			if to.Magnitude > 0.5 then camLook = camLook:Lerp(to.Unit, lockBlend).Unit end
+		end
 		local fwdFlat = flatUnit(camLook, flight.heading)
 		local rightFlat = fwdFlat:Cross(Vector3.yAxis)
 		-- forward follows where the camera looks (pitch limited), sideways stays flat
 		local pitch = math.clamp(math.asin(math.clamp(camLook.Y, -1, 1)), -1.1, 1.1)
 		local fwd3 = fwdFlat * math.cos(pitch) + Vector3.yAxis * math.sin(pitch)
+		-- always going forward (where you look); A/D drift sideways, Space / Ctrl up and down
 		local mv, vert = readMove()
-		local dir = rightFlat * mv.X + fwd3 * (-mv.Z) + Vector3.yAxis * vert
-		if dir.Magnitude > 1 then dir = dir.Unit end
+		local dir = (fwd3 + rightFlat * mv.X * 0.5 + Vector3.yAxis * vert * 0.5).Unit
 		flight.vel = flight.vel:Lerp(dir * fast, 1 - math.exp(-dt * 3))
 		local cam = workspace.CurrentCamera
 		if cam and flight.fov then
@@ -239,6 +265,33 @@ local function flightUpdate(dt)
 		local tip = FLY_PITCH * math.clamp(hs / (speed * 0.6), 0, 1)
 		local climb = math.atan2(vel.Y, math.max(hs, 1)) * math.clamp(hs / 10, 0, 1) * 0.6
 		flight.ao.CFrame = CFrame.lookAt(Vector3.zero, flight.heading) * CFrame.Angles(climb - tip, 0, 0)
+	elseif phase == "land" then
+		-- plunge to the floor (keeping a little of your speed), upright, then slam into it
+		flight.landT = (flight.landT or 0) + dt
+		local feet = flight.humanoid.RigType == Enum.HumanoidRigType.R6 and flight.root.Size.Y * 0.5 + 2
+			or flight.humanoid.HipHeight + flight.root.Size.Y * 0.5
+		local fall = math.min(150, 50 + flight.landT * 220)
+		local horiz = Vector3.new(flight.vel.X, 0, flight.vel.Z) * math.exp(-dt * 2.5)
+		flight.vel = horiz + Vector3.new(0, -fall, 0)
+		flight.lv.VectorVelocity = flight.vel
+		flight.ao.CFrame = CFrame.lookAt(Vector3.zero, flight.heading)
+		local hit = groundBelow(character, pos, feet + fall * dt * 2 + 0.5)
+		if hit or flight.landT > 3 then
+			local root, humanoid = flight.root, flight.humanoid
+			if hit then root.CFrame = CFrame.lookAt(hit.Position + Vector3.new(0, feet, 0), hit.Position + Vector3.new(0, feet, 0) + flight.heading) end
+			flightStop()
+			root.AssemblyLinearVelocity = Vector3.zero
+			toggleRemote:FireServer("landed")
+			if hit then
+				playLanding(character)
+				-- stuck in the pose for a moment
+				local speed, jump = humanoid.WalkSpeed, humanoid.JumpPower
+				humanoid.WalkSpeed, humanoid.JumpPower = 0, 0
+				task.delay(0.9, function()
+					if humanoid.Parent and humanoid.WalkSpeed == 0 then humanoid.WalkSpeed, humanoid.JumpPower = speed, jump end
+				end)
+			end
+		end
 	end
 end
 
@@ -363,6 +416,9 @@ local function watchCharacter(character)
 	table.insert(conns, character:GetAttributeChangedSignal("DragonPhase"):Connect(function()
 		dragonRefresh(character)
 	end))
+	table.insert(conns, character:GetAttributeChangedSignal("DragonLanded"):Connect(function()
+		playLanding(character)
+	end))
 	table.insert(conns, character:GetAttributeChangedSignal("SpinjitzuColor"):Connect(function()
 		if byCharacter[character] and not character:GetAttribute("DragonPhase") then
 			killEffect(character, true)
@@ -416,6 +472,8 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		toggleRemote:FireServer("dragon")
 	elseif Config.CreationKey and input.KeyCode == Config.CreationKey then
 		toggleRemote:FireServer("creation")
+	elseif Config.ShatterKey and input.KeyCode == Config.ShatterKey then
+		toggleRemote:FireServer("shatter")
 	end
 end)
 
@@ -521,7 +579,10 @@ local function lodUpdate(dt)
 		table.insert(groups, { list = list, f = f, mine = mine, prio = prio })
 	end
 	local myChar = localPlayer.Character
-	for fx in pairs(running) do add(fx.emitters, fx.root, fx.character == myChar, fx.character.Name == "TornadoOfCreation") end
+	for fx in pairs(running) do
+		-- (the Tornado of Creation and Shatterspin's swarm always get full detail)
+		add(fx.emitters, fx.root, fx.character == myChar, fx.character.Name == "TornadoOfCreation" or fx.preset == Config.Presets.Shatter)
+	end
 	for d in pairs(dragonRunning) do add(d.emitters, d.root, d.character == myChar) end
 	-- the Tornado of Creation always gets full detail; everything else shares what's left
 	local scale = math.min(1, math.max(PARTICLE_BUDGET - fixed, PARTICLE_BUDGET * 0.25) / math.max(total, 1))
@@ -601,5 +662,169 @@ RunService.Stepped:Connect(function(_, dt)
 	end
 	for d in pairs(dragonRunning) do
 		d:ApplyPose()
+	end
+	for character, l in pairs(landings) do
+		if l:Update(dt) then
+			l:ApplyPose()
+		else
+			landings[character] = nil
+		end
+	end
+end)
+
+----------------------------------------------------------------------------------------
+-- dragon HUD: a bar showing how long you've got left in the air; lock-on (a reticle closing in
+-- on whoever you're locking onto, then locked; the camera swings round to keep them in front of
+-- you so you fly straight at them)
+----------------------------------------------------------------------------------------
+
+local RED = Color3.fromRGB(255, 45, 55)
+local hud = Instance.new("ScreenGui")
+hud.Name = "DragonHUD"
+hud.ResetOnSpawn = false
+hud.Enabled = false
+hud.Parent = localPlayer:WaitForChild("PlayerGui")
+local barBack = Instance.new("Frame")
+barBack.AnchorPoint = Vector2.new(0.5, 1)
+barBack.Position = UDim2.new(0.5, 0, 1, -110)
+barBack.Size = UDim2.fromOffset(280, 10)
+barBack.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+barBack.BackgroundTransparency = 0.3
+barBack.BorderSizePixel = 0
+barBack.Parent = hud
+Instance.new("UICorner", barBack).CornerRadius = UDim.new(1, 0)
+local barFill = Instance.new("Frame")
+barFill.Size = UDim2.fromScale(1, 1)
+barFill.BorderSizePixel = 0
+barFill.Parent = barBack
+Instance.new("UICorner", barFill).CornerRadius = UDim.new(1, 0)
+local barText = Instance.new("TextLabel")
+barText.BackgroundTransparency = 1
+barText.AnchorPoint = Vector2.new(0.5, 1)
+barText.Position = UDim2.new(0.5, 0, 0, -4)
+barText.Size = UDim2.fromOffset(280, 18)
+barText.Font = Enum.Font.GothamBold
+barText.TextSize = 14
+barText.TextColor3 = Color3.new(1, 1, 1)
+barText.TextStrokeTransparency = 0.5
+barText.Parent = barBack
+
+-- the reticle: four corner brackets + a diamond in the middle, over the target
+local reticle = Instance.new("BillboardGui")
+reticle.Name = "DragonLockReticle"
+reticle.AlwaysOnTop = true
+reticle.Size = UDim2.fromOffset(110, 110)
+reticle.Enabled = false
+reticle.Parent = hud
+local frame = Instance.new("Frame")
+frame.AnchorPoint = Vector2.new(0.5, 0.5)
+frame.Position = UDim2.fromScale(0.5, 0.5)
+frame.Size = UDim2.fromScale(1, 1)
+frame.BackgroundTransparency = 1
+frame.Parent = reticle
+local corners = {}
+for _, c in ipairs({ { 0, 0 }, { 1, 0 }, { 0, 1 }, { 1, 1 } }) do
+	for _, horiz in ipairs({ true, false }) do
+		local f = Instance.new("Frame")
+		f.AnchorPoint = Vector2.new(c[1], c[2])
+		f.Position = UDim2.fromScale(c[1], c[2])
+		f.Size = horiz and UDim2.new(0.3, 0, 0, 4) or UDim2.new(0, 4, 0.3, 0)
+		f.BorderSizePixel = 0
+		f.BackgroundColor3 = RED
+		f.Parent = frame
+		table.insert(corners, f)
+	end
+end
+local diamond = Instance.new("Frame")
+diamond.AnchorPoint = Vector2.new(0.5, 0.5)
+diamond.Position = UDim2.fromScale(0.5, 0.5)
+diamond.Size = UDim2.fromOffset(14, 14)
+diamond.Rotation = 45
+diamond.BackgroundTransparency = 1
+diamond.Parent = frame
+local stroke = Instance.new("UIStroke")
+stroke.Color = RED
+stroke.Thickness = 2
+stroke.Parent = diamond
+local lockText = Instance.new("TextLabel")
+lockText.BackgroundTransparency = 1
+lockText.AnchorPoint = Vector2.new(0.5, 0)
+lockText.Position = UDim2.new(0.5, 0, 1, 4)
+lockText.Size = UDim2.fromOffset(140, 18)
+lockText.Font = Enum.Font.GothamBlack
+lockText.TextSize = 14
+lockText.TextColor3 = RED
+lockText.TextStrokeTransparency = 0.4
+lockText.Parent = reticle
+reticle.ClipsDescendants = false
+
+local function setReticleColour(col)
+	for _, f in ipairs(corners) do f.BackgroundColor3 = col end
+	stroke.Color, lockText.TextColor3 = col, col
+end
+
+local function rootOfValue(character, name)
+	local v = character and character:FindFirstChild(name)
+	local target = v and v:IsA("ObjectValue") and v.Value
+	return target and target.Parent and target:FindFirstChild("HumanoidRootPart") or nil
+end
+
+RunService:BindToRenderStep("DragonHUD", Enum.RenderPriority.Camera.Value + 1, function(dt)
+	local character = localPlayer.Character
+	local phase = character and character:GetAttribute("DragonPhase")
+	local onDragon = phase == "rise" or phase == "fly" or phase == "land"
+	hud.Enabled = onDragon
+	if not onDragon then
+		lockBlend = 0
+		reticle.Adornee, reticle.Enabled = nil, false
+		return
+	end
+	-- time left
+	local ends = character:GetAttribute("DragonEnds")
+	local col = character:GetAttribute("SpinjitzuColor") or Config.Color
+	if phase == "fly" and typeof(ends) == "number" then
+		local left = math.max(0, ends - workspace:GetServerTimeNow())
+		barFill.Size = UDim2.fromScale(math.clamp(left / (Config.DragonFlyTime or 6), 0, 1), 1)
+		barFill.BackgroundColor3 = left < 1.5 and RED or col
+		barText.Text = ("%.1f"):format(left)
+	elseif phase == "rise" then
+		barFill.Size = UDim2.fromScale(1, 1)
+		barFill.BackgroundColor3 = col
+		barText.Text = "RISING"
+	else
+		barFill.Size = UDim2.fromScale(0, 1)
+		barText.Text = "LANDING"
+	end
+	-- lock-on
+	local locked = lockTarget(character)
+	local locking = not locked and rootOfValue(character, "DragonLocking")
+	local target = locked or locking
+	reticle.Adornee, reticle.Enabled = target, target ~= nil
+	if locked then
+		local pulse = 1 + math.sin(os.clock() * 12) * 0.06
+		frame.Size = UDim2.fromScale(0.55 * pulse, 0.55 * pulse)
+		frame.Rotation = 0
+		setReticleColour(RED)
+		lockText.Text = "LOCKED - RAM THEM"
+	elseif locking then
+		local p = character:GetAttribute("LockProgress") or 0
+		frame.Size = UDim2.fromScale(1 - 0.45 * p, 1 - 0.45 * p)
+		frame.Rotation = (1 - p) * 90
+		setReticleColour(Color3.new(1, 1, 1):Lerp(RED, p))
+		lockText.Text = ("LOCKING %d%%"):format(math.floor(p * 100))
+	end
+	-- the camera swings round behind you to face them
+	local want = (locked and phase ~= "land") and 1 or 0
+	lockBlend += (want - lockBlend) * (1 - math.exp(-dt * 6))
+	local root = character:FindFirstChild("HumanoidRootPart")
+	local cam = workspace.CurrentCamera
+	if lockBlend > 0.01 and locked and root and cam then
+		local zoom = math.clamp((cam.CFrame.Position - cam.Focus.Position).Magnitude, 8, 35)
+		local to = locked.Position - root.Position
+		if to.Magnitude > 1 then
+			local dir = to.Unit
+			local camPos = root.Position - dir * zoom + Vector3.new(0, zoom * 0.3, 0)
+			cam.CFrame = cam.CFrame:Lerp(CFrame.lookAt(camPos, locked.Position), lockBlend)
+		end
 	end
 end)

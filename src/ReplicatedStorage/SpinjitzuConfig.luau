@@ -1,4 +1,4 @@
--- SpinjitzuConfig v15.8  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuConfig v16.0  (ModuleScript in ReplicatedStorage)
 
 local Config = {}
 
@@ -67,6 +67,12 @@ Config.Presets = {
 		}),
 	},
 	Golden    = { Color = Color3.fromRGB(255, 165, 15), Highlight = Color3.fromRGB(255, 235, 120), SoundId = "95671962797578" },
+	-- Shatterspin (X): not an element you pick; its own red + black look
+	Shatter = {
+		Color = Color3.fromRGB(225, 15, 25), Highlight = Color3.fromRGB(255, 95, 105), Deep = Color3.fromRGB(12, 0, 2),
+		Sounds = { Start = "76928178554365", Loop = "71894695368576", End = "90408709963452" },
+		Sparks = "electric", Base = "shatter", Glow = 0.75, Band = 0.85, LightBrightness = 9, Size = 1.35,
+	},
 	Shadow    = { Color = Color3.fromRGB(115, 35, 225), Highlight = Color3.fromRGB(210, 150, 255), SoundId = "95671962797578" },
 }
 
@@ -89,14 +95,19 @@ Config.HideCharacter = true    -- player is invisible inside the tornado
 Config.MuteFootsteps = true    -- no running sounds while spinning
 Config.SpeedMultiplier = 2     -- walk speed multiplier while spinning
 
--- Dragon (R): Spinjitzu -> dragon appears and you rise straight up -> free flight. R again to drop out.
--- Flying: WASD = move (where the camera looks, so look up/down to climb/dive), Space = up, Ctrl = down
+-- Dragon (R): Spinjitzu -> dragon appears and you rise straight up -> DragonFlyTime seconds of
+-- flight -> you dive down into a superhero landing. R again lands early.
+-- Flying: you keep going where the camera looks (look up/down to climb/dive); A/D drift, Space = up,
+-- Ctrl = down, Shift = faster. Holding left click breathes your power (the head follows your mouse).
 Config.DragonKey = Enum.KeyCode.R
 Config.DragonSpinTime = 2       -- seconds of Spinjitzu before the dragon appears
 Config.DragonRiseTime = 3       -- seconds going straight up before you can move
 Config.DragonRiseHeight = 35    -- studs it rises in that time
 Config.DragonFlySpeed = 50      -- studs/s
 Config.DragonBoost = 1.9        -- holding Shift while flying: this many times faster
+Config.DragonFlyTime = 6        -- seconds of flight after the rise, then you land
+Config.DragonLockTime = 1       -- seconds your beam must stay on a Shatterspinner to lock on
+Config.DragonRamRange = 9       -- studs: locked on and this close = you hit them (Shatterspin broken)
 Config.DragonUpKey = Enum.KeyCode.Space
 Config.DragonDownKey = Enum.KeyCode.LeftControl
 Config.DragonScale = 1
@@ -104,6 +115,18 @@ Config.DragonWingScale = 1      -- wing size on top of DragonScale
 Config.DragonHeadScale = 1.0    -- head size on top of DragonScale
 Config.DragonFlapSpeed = 6      -- wing beat speed while flying
 Config.DragonBot = true         -- a bot that demos the dragon on a loop
+
+-- Shatterspin (X): red + black destructive Spinjitzu. Hurts + throws whoever it touches, flings loose
+-- things, and nothing can hurt you while it's on. Countered only by a Rising Dragon (lock on + ram).
+Config.ShatterKey = Enum.KeyCode.X
+Config.ShatterTime = 8              -- seconds it lasts
+Config.ShatterCooldown = 12         -- seconds before you can do it again
+Config.ShatterBrokenCooldown = 20   -- ... after a dragon broke it
+Config.ShatterSpeed = 2.6           -- walk speed multiplier
+Config.ShatterRadius = 10           -- studs it reaches
+Config.ShatterDamage = 9            -- per hit (each thing it touches gets hit twice a second)
+Config.ShatterCounterDamage = 40    -- the dragon's ram
+Config.ShatterBot = true            -- a bot that Shatterspins in a circle (practise the counter)
 
 -- Tornado of Creation (T): needs 4 players close together on Fire, Earth, Lightning and Ice.
 -- They start Spinjitzu in this order, come together and merge into one huge tornado.

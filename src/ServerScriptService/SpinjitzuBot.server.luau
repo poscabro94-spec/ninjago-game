@@ -1,4 +1,4 @@
--- SpinjitzuBot v6.1  (Script in ServerScriptService)
+-- SpinjitzuBot v6.2  (Script in ServerScriptService)
 -- Test dummies that loop Spinjitzu: 6s on, stop, 1s pause, repeat. One bot per
 -- element in Config.TestBotElements, side by side. Turn off with Config.TestBot = false.
 
@@ -59,6 +59,29 @@ if Config.CreationBot then
 	end)
 end
 
+-- Shatterspin bot: Shatterspins round in a circle (whenever it can), so you can practise the
+-- counter: on the dragon, hold your beam on it for a second to lock on, then fly into it
+if Config.ShatterBot then
+	local Shatter = require(script.Parent:WaitForChild("Shatterspin"))
+	local home = origin + Vector3.new(45, 0, 35)
+	local sbot = makeBot("Fire", home, "SpinjitzuBot_Shatter")
+	local hum = sbot:FindFirstChildOfClass("Humanoid")
+	hum.DisplayName = "Shatterspin Bot"
+	local root = sbot:FindFirstChild("HumanoidRootPart")
+	local y = root.Position.Y
+	local ang = 0
+	game:GetService("RunService").Heartbeat:Connect(function(dt)
+		if not sbot.Parent then return end
+		if not sbot:GetAttribute("Shatterspin") then
+			if (sbot:GetAttribute("ShatterReady") or 0) <= workspace:GetServerTimeNow() then Shatter.start(sbot, hum) end
+			return
+		end
+		ang += dt * 0.9
+		local p = Vector3.new(home.X + math.cos(ang) * 14, y, home.Z + math.sin(ang) * 14)
+		root.CFrame = CFrame.new(p)
+	end)
+end
+
 -- Dragon demo bot: spin -> rises straight up with the dragon -> flies a loop -> lands, on repeat
 if Config.DragonBot then
 	local dbot = makeBot(Config.Element, origin + Vector3.new(0, 0, 30), "SpinjitzuBot_Dragon")
@@ -77,6 +100,7 @@ if Config.DragonBot then
 			dbot:SetAttribute("DragonPhase", "land")
 			task.wait(2.5)
 			dbot:SetAttribute("DragonPhase", nil)
+			dbot:SetAttribute("DragonLanded", (dbot:GetAttribute("DragonLanded") or 0) + 1) -- superhero landing
 			task.wait(2)
 		end
 	end)
