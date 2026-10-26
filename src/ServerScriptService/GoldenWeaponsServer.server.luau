@@ -1,4 +1,4 @@
--- GoldenWeaponsServer v7.4  (Script in ServerScriptService)
+-- GoldenWeaponsServer v7.5  (Script in ServerScriptService)
 -- Gives every player the Golden Weapon of their element on spawn (slot 1) and swaps it when
 -- they switch element: Lightning = Nunchucks of Lightning, Fire = Sword of Fire,
 -- Earth = Scythe of Quakes, Ice = Shurikens of Ice. The menu can hand out several at once (player
@@ -27,6 +27,19 @@ local S = GoldenWeapons.Sword
 local SC = GoldenWeapons.Scythe
 local K = GoldenWeapons.Shurikens
 local TAU = math.pi * 2
+
+-- imported weapon models left in Workspace (where the 3D importer puts them) move to
+-- ReplicatedStorage when the game starts: out of the world, and visible to the menu's previews
+do
+	local names = { N.ModelName, N.MeshName, S.ModelName, SC.ModelName, K.ModelName }
+	for _, W in pairs(GoldenWeapons.Weapons) do
+		if W.ModelName and not table.find(names, W.ModelName) then table.insert(names, W.ModelName) end
+	end
+	for _, name in ipairs(names) do
+		local found = not ReplicatedStorage:FindFirstChild(name, true) and workspace:FindFirstChild(name, true)
+		if found and not found:FindFirstAncestorOfClass("Tool") then found.Parent = ReplicatedStorage end
+	end
+end
 
 local throwRemote = ReplicatedStorage:FindFirstChild("ShurikenThrow")
 if not throwRemote then
