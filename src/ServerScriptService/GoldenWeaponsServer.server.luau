@@ -1,8 +1,9 @@
--- GoldenWeaponsServer v6.2  (Script in ServerScriptService)
+-- GoldenWeaponsServer v7.0  (Script in ServerScriptService)
 -- Gives every player the Golden Weapon of their element on spawn (slot 1) and swaps it when
 -- they switch element: Lightning = Nunchucks of Lightning, Fire = Sword of Fire,
--- Earth = Scythe of Quakes, Ice = Shurikens of Ice. The menu can pick another one (player attribute
--- GoldenWeapon: a weapon kind or "None"). When not equipped it sits on your back.
+-- Earth = Scythe of Quakes, Ice = Shurikens of Ice. The menu can hand out several at once (player
+-- attribute GoldenWeapons: "Sword,Scythe" / "None"). Your element's weapon (else the first) sits
+-- on your back when not equipped.
 -- Melee weapons: click = 4-hit combo; the server picks the swing, plays the sounds and does the
 -- hit check (damage + knockback + hit flash in the weapon's colour). Scythe finisher = quake.
 -- Shurikens: the client sends where you aim (ShurikenThrow), the server throws them, they
@@ -1083,6 +1084,36 @@ end
 
 local giveToken = setmetatable({}, { __mode = "k" }) -- newest give() per player wins
 
+-- which weapons the player should have, the one for their back first
+local function wantedWeapons(player)
+	local own = GoldenWeapons.ByElement[elementOf(player)]
+	local attr = player:GetAttribute("GoldenWeapons") -- set from the menu
+	local list = {}
+	if attr == nil then
+		if own then table.insert(list, own) end
+	elseif attr ~= "None" then
+		for kind in attr:gmatch("[^,]+") do
+			if GoldenWeapons.Weapons[kind] and not table.find(list, kind) then table.insert(list, kind) end
+		end
+		local i = table.find(list, own)
+		if i and i > 1 then table.insert(list, 1, table.remove(list, i)) end
+	end
+	return list
+end
+
+local function buildWeapon(W, char, withHolster)
+	if W == N then
+		local stickT = findMesh({ N.ModelName, N.MeshName })
+		if not stickT then warn("[GoldenWeapons] nunchuck mesh not found, using plain sticks") end
+		return buildNunchucks(stickT), withHolster and buildNunchuckHolster(char, stickT) or nil
+	elseif W == K then
+		local model = findModel(K.ModelName)
+		return buildShurikens(model), withHolster and buildShurikenHolster(char, model) or nil
+	end
+	local model = findModel(W.ModelName)
+	return buildMelee(W, model), withHolster and buildBackHolster(char, W, model) or nil
+end
+
 -- each player gets their own build (the combo state lives in its connections)
 local function give(player)
 	local token = (giveToken[player] or 0) + 1
@@ -1090,53 +1121,47 @@ local function give(player)
 	local backpack = player:FindFirstChildOfClass("Backpack") or player:WaitForChild("Backpack", 10)
 	local char = player.Character
 	if not backpack or not char or giveToken[player] ~= token then return end
-	local choice = player:GetAttribute("GoldenWeapon") -- picked in the menu
-	local kind
-	if choice == "None" then
-		kind = nil
-	elseif choice and GoldenWeapons.Weapons[choice] then
-		kind = choice
-	else
-		kind = GoldenWeapons.ByElement[elementOf(player)]
-	end
-	local W = kind and GoldenWeapons.Weapons[kind]
-	if W and (backpack:FindFirstChild(W.ToolName) or char:FindFirstChild(W.ToolName)) then return end
-	clearWeapons(player, backpack, char)
-	if not W then return end
+	local list = wantedWeapons(player)
 
-	local tool, holster
-	if W == N then
-		local stickT = findMesh({ N.ModelName, N.MeshName })
-		if not stickT then warn("[GoldenWeapons] nunchuck mesh not found, using plain sticks") end
-		tool = buildNunchucks(stickT)
-		holster = buildNunchuckHolster(char, stickT)
-	elseif W == K then
-		local model = findModel(K.ModelName)
-		tool = buildShurikens(model)
-		holster = buildShurikenHolster(char, model)
-	else
-		local model = findModel(W.ModelName)
-		tool = buildMelee(W, model)
-		holster = buildBackHolster(char, W, model)
+	-- already exactly these (and the right one on the back)? leave them alone
+	local same = true
+	for kind, W in pairs(GoldenWeapons.Weapons) do
+		local has = backpack:FindFirstChild(W.ToolName) or char:FindFirstChild(W.ToolName)
+		if (has ~= nil) ~= (table.find(list, kind) ~= nil) then same = false end
+	end
+	if same and list[1] and not char:FindFirstChild(GoldenWeapons.Weapons[list[1]].HolsterName) then same = false end
+	if same then return end
+	clearWeapons(player, backpack, char)
+
+	local built = {}
+	for i, kind in ipairs(list) do
+		local W = GoldenWeapons.Weapons[kind]
+		local tool, holster = buildWeapon(W, char, i == 1)
+		table.insert(built, { W = W, tool = tool, holster = holster })
 	end
 	if giveToken[player] ~= token or player.Character ~= char then -- switched again while building
-		tool:Destroy()
-		if holster then holster:Destroy() end
+		for _, b in ipairs(built) do
+			b.tool:Destroy()
+			if b.holster then b.holster:Destroy() end
+		end
 		return
 	end
-	tool.Equipped:Connect(function()
-		-- hide it off your back right when the draw animation grabs it
-		task.delay(W.Draw.time * W.Draw.grabAt, function()
-			if tool.Parent == char then
-				showHolster(holster, false)
-				-- whoosh as they come off your back
-				local hs = tool.Handle:FindFirstChildOfClass("Sound")
-				if hs then hs.PlaybackSpeed = 1.25 hs:Play() end
-			end
+	for _, b in ipairs(built) do
+		local tool, holster, W = b.tool, b.holster, b.W
+		tool.Equipped:Connect(function()
+			-- hide it off your back right when the draw animation grabs it
+			task.delay(W.Draw.time * W.Draw.grabAt, function()
+				if tool.Parent == char then
+					showHolster(holster, false)
+					-- whoosh as it comes off your back
+					local hs = tool.Handle:FindFirstChildOfClass("Sound")
+					if hs then hs.PlaybackSpeed = 1.25 hs:Play() end
+				end
+			end)
 		end)
-	end)
-	tool.Unequipped:Connect(function() showHolster(holster, true) end)
-	tool.Parent = backpack
+		tool.Unequipped:Connect(function() showHolster(holster, true) end)
+		tool.Parent = backpack -- in this order, so they take hotbar slots 1, 2, 3...
+	end
 end
 
 throwRemote.OnServerEvent:Connect(function(player, aim)
@@ -1151,7 +1176,7 @@ local function onPlayer(player)
 	player.CharacterAdded:Connect(function() task.wait(0.2) give(player) end)
 	-- switching element (E) swaps the weapon
 	player:GetAttributeChangedSignal("SpinjitzuElement"):Connect(function() give(player) end)
-	player:GetAttributeChangedSignal("GoldenWeapon"):Connect(function() give(player) end)
+	player:GetAttributeChangedSignal("GoldenWeapons"):Connect(function() give(player) end)
 end
 Players.PlayerAdded:Connect(onPlayer)
 for _, player in ipairs(Players:GetPlayers()) do

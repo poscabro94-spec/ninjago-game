@@ -1,7 +1,8 @@
--- NinjaMenu v1.0  (LocalScript in StarterPlayerScripts)
--- The MENU button (bottom left, or M) opens a panel to pick your character (NinjaRoster) and
--- your Golden Weapon. Cards show live 3D previews: your own avatar in each ninja's colours,
--- and the weapon models from ReplicatedStorage. NinjaMenuServer does the actual change.
+-- NinjaMenu v1.1  (LocalScript in StarterPlayerScripts)
+-- The MENU button (bottom left, or M) opens a panel: pick your character (NinjaRoster), switch
+-- Golden Weapons on and off (several at once), and spawn the Tornado of Creation crew as bots.
+-- Cards show live 3D previews: your own avatar in each ninja's colours, and the weapon models
+-- from ReplicatedStorage. NinjaMenuServer does the actual change.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -10,6 +11,7 @@ local UserInputService = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
 
 local Roster = require(ReplicatedStorage:WaitForChild("NinjaRoster"))
+local Config = require(ReplicatedStorage:WaitForChild("SpinjitzuConfig"))
 local GoldenWeapons = require(ReplicatedStorage:WaitForChild("GoldenWeapons"))
 local remote = ReplicatedStorage:WaitForChild("NinjaMenu")
 local player = Players.LocalPlayer
@@ -168,6 +170,20 @@ local function bladesIcon()
 	return holder
 end
 
+-- the Tornado of Creation: bands from blue at the bottom to white at the top
+local function tornadoIcon()
+	local holder = new("Frame", { Size = UDim2.fromOffset(60, 60), BackgroundTransparency = 1 })
+	local bands = {
+		{ 58, Color3.fromRGB(255, 250, 235) }, { 50, Color3.fromRGB(255, 220, 120) }, { 42, Color3.fromRGB(255, 160, 50) },
+		{ 33, Color3.fromRGB(240, 110, 30) }, { 24, Color3.fromRGB(120, 200, 255) }, { 14, Color3.fromRGB(55, 150, 255) },
+	}
+	for i, band in ipairs(bands) do
+		new("Frame", { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, (i % 2 == 0) and 2 or -2, 0, (i - 1) * 10),
+			Size = UDim2.fromOffset(band[1], 8), BackgroundColor3 = band[2], BorderSizePixel = 0 }, { round(UDim.new(0, 4)) }).Parent = holder
+	end
+	return holder
+end
+
 ----------------------------------------------------------------------------------------
 -- cards
 ----------------------------------------------------------------------------------------
@@ -275,8 +291,7 @@ local function captureAvatar()
 	return copy
 end
 
-local function showCharacter(viewport, ninja)
-	if not avatar then return end
+local function dressed(ninja)
 	local model = avatar:Clone()
 	if ninja then
 		for _, d in ipairs(model:GetDescendants()) do
@@ -289,6 +304,12 @@ local function showCharacter(viewport, ninja)
 			end
 		end
 	end
+	return model
+end
+
+local function showCharacter(viewport, ninja)
+	if not avatar then return end
+	local model = dressed(ninja)
 	model:PivotTo(CFrame.new())
 	model.Parent = viewport
 	local head = model:FindFirstChild("Head")
@@ -349,6 +370,24 @@ local function showWeapon(viewport, kind)
 	viewport.CurrentCamera = camera
 end
 
+-- the crew you'd get: the other Creation ninja side by side
+local function showCrew(viewport, elements)
+	if not avatar then return end
+	for i, el in ipairs(elements) do
+		local ninja
+		for _, n in ipairs(Roster.Ninjas) do
+			if n.Element == el then ninja = n end
+		end
+		local model = dressed(ninja or Roster.Ninjas[1])
+		model:PivotTo(CFrame.new((i - (#elements + 1) / 2) * 2.6, 0, (i == 2) and -0.6 or 0))
+		model.Parent = viewport
+	end
+	local camera = new("Camera", { FieldOfView = 30 })
+	camera.CFrame = CFrame.lookAt(Vector3.new(0, 1.2, -13), Vector3.new(0, 0.2, 0))
+	camera.Parent = viewport
+	viewport.CurrentCamera = camera
+end
+
 -- "no weapon": an empty disc with a slash through it
 local function showNone(disc)
 	new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(70, 70),
@@ -361,27 +400,57 @@ end
 -- pages
 ----------------------------------------------------------------------------------------
 
-local characterGrid, weaponGrid = grid(), grid()
-characterGrid.Parent, weaponGrid.Parent = content, content
+local characterGrid, weaponGrid, botGrid = grid(), grid(), grid()
+characterGrid.Parent, weaponGrid.Parent, botGrid.Parent = content, content, content
 local characterCards, weaponCards = {}, {}
+local crewSubtitle
 
 local function currentNinja() return player:GetAttribute("Ninja") or "You" end
-local function currentWeapon()
-	local choice = player:GetAttribute("GoldenWeapon")
-	if choice then return choice end
-	return GoldenWeapons.ByElement[player:GetAttribute("SpinjitzuElement") or ""] or "None"
+local function myElement() return player:GetAttribute("SpinjitzuElement") or Config.Element end
+-- the weapons you have now (same rule as GoldenWeaponsServer)
+local function currentWeapons()
+	local attr = player:GetAttribute("GoldenWeapons")
+	local set, count = {}, 0
+	if attr == nil then
+		local own = GoldenWeapons.ByElement[myElement()]
+		if own then set[own], count = true, 1 end
+	elseif attr ~= "None" then
+		for kind in attr:gmatch("[^,]+") do
+			if GoldenWeapons.Weapons[kind] and not set[kind] then set[kind], count = true, count + 1 end
+		end
+	end
+	return set, count
+end
+local function crewElements()
+	local list = {}
+	for _, el in ipairs(Config.CreationElements) do
+		if el ~= myElement() then table.insert(list, el) end
+	end
+	return list
 end
 
 local function refresh()
-	local ninja, weapon = currentNinja(), currentWeapon()
+	local ninja = currentNinja()
+	local weapons, count = currentWeapons()
 	for name, setSelected in pairs(characterCards) do setSelected(name == ninja) end
-	for kind, setSelected in pairs(weaponCards) do setSelected(kind == weapon) end
-	local W = GoldenWeapons.Weapons[weapon]
-	local element = player:GetAttribute("SpinjitzuElement")
-	status.Text = ("Playing as %s%s   |   Weapon: %s"):format(ninja == "You" and "yourself" or ninja,
-		element and (" (" .. element .. ")") or "", W and W.ToolName or "none")
+	for kind, setSelected in pairs(weaponCards) do
+		if kind == "All" then setSelected(count == #WEAPON_ORDER)
+		elseif kind == "None" then setSelected(count == 0)
+		else setSelected(weapons[kind] == true) end
+	end
+	local names = {}
+	for _, kind in ipairs(WEAPON_ORDER) do
+		if weapons[kind] then table.insert(names, kind) end
+	end
+	if crewSubtitle then
+		local crew = crewElements()
+		crewSubtitle.Text = #crew == 3 and table.concat(crew, ", ") or "be Fire, Earth, Lightning or Ice"
+	end
+	status.Text = ("Playing as %s (%s)   |   Weapons: %s"):format(ninja == "You" and "yourself" or ninja, myElement(),
+		#names > 0 and table.concat(names, ", ") or "none")
 end
 
+local setOpen -- (below)
 local built = false
 local function buildCards()
 	if built then return end
@@ -412,11 +481,36 @@ local function buildCards()
 		button.Parent = weaponGrid
 	end
 	local disc
-	button, viewport, setSelected, disc = card(#WEAPON_ORDER + 1, "None", "no weapon")
+	button, viewport, setSelected, disc = card(#WEAPON_ORDER + 1, "All", "every weapon")
+	local icon = bladesIcon()
+	icon.AnchorPoint, icon.Position, icon.ZIndex = Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, 0.5), 4
+	for _, d in ipairs(icon:GetDescendants()) do
+		if d:IsA("GuiObject") then d.ZIndex = 4 end
+	end
+	icon.Parent = disc
+	weaponCards.All = setSelected
+	button.Activated:Connect(function() remote:FireServer("weapon", "All") end)
+	button.Parent = weaponGrid
+	button, viewport, setSelected, disc = card(#WEAPON_ORDER + 2, "None", "no weapon")
 	showNone(disc)
 	weaponCards.None = setSelected
 	button.Activated:Connect(function() remote:FireServer("weapon", "None") end)
 	button.Parent = weaponGrid
+
+	button, viewport = card(1, "Creation Crew", " ")
+	for _, d in ipairs(button:GetChildren()) do -- the subtitle, filled in by refresh()
+		if d:IsA("TextLabel") and d.Text == " " then crewSubtitle = d end
+	end
+	showCrew(viewport, crewElements())
+	button.Activated:Connect(function()
+		remote:FireServer("bots", "creation")
+		task.delay(0.3, function() setOpen(false) end) -- out of the way so you can press T
+	end)
+	button.Parent = botGrid
+	button, viewport, setSelected, disc = card(2, "Remove Bots", "your crew")
+	showNone(disc)
+	button.Activated:Connect(function() remote:FireServer("bots", "remove") end)
+	button.Parent = botGrid
 	refresh()
 end
 
@@ -436,6 +530,7 @@ end
 local pages = {
 	{ name = "Characters", icon = ninjaIcon, tabs = { "Ninjas" }, grid = characterGrid },
 	{ name = "Weapons", icon = bladesIcon, tabs = { "Golden Weapons" }, grid = weaponGrid },
+	{ name = "Bots", icon = tornadoIcon, tabs = { "Tornado of Creation" }, grid = botGrid },
 }
 local sideItems = {}
 
@@ -482,7 +577,7 @@ local function fit()
 	return math.clamp(math.min((vp.X - 40) / 900, (vp.Y - 130) / 580), 0.45, 1)
 end
 
-local function setOpen(on)
+function setOpen(on)
 	if on == open then return end
 	open = on
 	if on then

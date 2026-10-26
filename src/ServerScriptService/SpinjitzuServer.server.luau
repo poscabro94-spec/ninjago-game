@@ -1,9 +1,10 @@
--- SpinjitzuServer v7.0  (Script in ServerScriptService)
+-- SpinjitzuServer v7.1  (Script in ServerScriptService)
 -- Toggles Spinjitzu on the character (every client renders it), handles element
 -- switching (E), the speed boost, and the Dragon move (R): spin -> rise straight up -> free flight.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CollectionService = game:GetService("CollectionService")
 local Config = require(ReplicatedStorage:WaitForChild("SpinjitzuConfig"))
 local Creation = require(script.Parent:WaitForChild("SpinjitzuCreation"))
 
@@ -86,6 +87,15 @@ remote.OnServerEvent:Connect(function(player, action)
 			if p ~= player and r and h and h.Health > 0 and not Creation.busy[ch] and not ch:GetAttribute("DragonPhase")
 				and not byElement[el] and (r.Position - myRoot.Position).Magnitude <= (Config.CreationRange or 40) then
 				byElement[el] = ch
+			end
+		end
+		-- your own Creation crew bots (spawned from the menu) fill the gaps
+		for _, bot in ipairs(CollectionService:GetTagged("CreationCrew")) do
+			local r = bot:FindFirstChild("HumanoidRootPart")
+			local el = bot:GetAttribute("CrewElement")
+			if bot:GetAttribute("CrewOwner") == player.UserId and r and el and not byElement[el] and not Creation.busy[bot]
+				and (r.Position - myRoot.Position).Magnitude <= (Config.CreationRange or 40) then
+				byElement[el] = bot
 			end
 		end
 		local members, missing = {}, {}

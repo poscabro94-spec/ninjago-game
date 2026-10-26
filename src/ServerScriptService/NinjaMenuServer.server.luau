@@ -1,14 +1,23 @@
--- NinjaMenuServer v1.0  (Script in ServerScriptService)
+-- NinjaMenuServer v1.1  (Script in ServerScriptService)
 -- What the menu (NinjaMenu) asks for:
 --   "character", name  -> become that ninja (element + look), "You" = back to your own avatar
---   "weapon", kind     -> that Golden Weapon ("None" = no weapon); GoldenWeaponsServer gives it
+--   "weapon", kind     -> add / remove that Golden Weapon ("All", "None" too). The list is the
+--                         player attribute GoldenWeapons ("Sword,Scythe" / "None"; unset = your
+--                         character's own); GoldenWeaponsServer hands them out
+--   "bots", "creation" -> the other three Tornado of Creation ninja as bots around you
+--   "bots", "remove"   -> your bots go away
 -- Your look stays when you respawn.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CollectionService = game:GetService("CollectionService")
 
 local Roster = require(ReplicatedStorage:WaitForChild("NinjaRoster"))
 local GoldenWeapons = require(ReplicatedStorage:WaitForChild("GoldenWeapons"))
+local Config = require(ReplicatedStorage:WaitForChild("SpinjitzuConfig"))
+local Bots = require(script.Parent:WaitForChild("SpinjitzuBots"))
+local Creation = require(script.Parent:WaitForChild("SpinjitzuCreation"))
+local WEAPON_KINDS = { "Sword", "Scythe", "Nunchucks", "Shurikens" }
 
 local remote = ReplicatedStorage:FindFirstChild("NinjaMenu")
 if not remote then
@@ -64,22 +73,107 @@ local function applyLook(player)
 	pending[player] = nil
 end
 
+local function elementOf(player)
+	local e = player:GetAttribute("SpinjitzuElement")
+	if e and Config.Presets[e] then return e end
+	return Config.Element
+end
+
+local function notify(player, text)
+	local toggle = ReplicatedStorage:FindFirstChild("SpinjitzuToggle")
+	if toggle then toggle:FireClient(player, "notify", text) end
+end
+
+----------------------------------------------------------------------------------------
+-- weapons: a list you add to / take from
+----------------------------------------------------------------------------------------
+
+local function weaponList(player)
+	local attr = player:GetAttribute("GoldenWeapons")
+	local list = {}
+	if attr == nil then
+		local own = GoldenWeapons.ByElement[elementOf(player)]
+		if own then table.insert(list, own) end
+	elseif attr ~= "None" then
+		for kind in attr:gmatch("[^,]+") do
+			if GoldenWeapons.Weapons[kind] then table.insert(list, kind) end
+		end
+	end
+	return list
+end
+
+local function pickWeapon(player, value)
+	local own = GoldenWeapons.ByElement[elementOf(player)]
+	if value == "None" then
+		player:SetAttribute("GoldenWeapons", "None")
+	elseif value == "All" then
+		if Roster.AnyWeapon then player:SetAttribute("GoldenWeapons", table.concat(WEAPON_KINDS, ",")) end
+	elseif GoldenWeapons.Weapons[value] then
+		if not Roster.AnyWeapon and value ~= own then return end
+		local list = weaponList(player)
+		local i = table.find(list, value)
+		if i then table.remove(list, i) else table.insert(list, value) end
+		player:SetAttribute("GoldenWeapons", #list > 0 and table.concat(list, ",") or "None")
+	end
+end
+
+----------------------------------------------------------------------------------------
+-- Tornado of Creation crew: the three you're missing, in a square with you
+----------------------------------------------------------------------------------------
+
+local function removeCrew(player)
+	for _, bot in ipairs(CollectionService:GetTagged("CreationCrew")) do
+		if bot:GetAttribute("CrewOwner") == player.UserId and not Creation.busy[bot] then bot:Destroy() end
+	end
+end
+
+local function spawnCrew(player)
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+	local order = Config.CreationElements
+	local mine = elementOf(player)
+	local myIndex = table.find(order, mine)
+	if not myIndex then
+		notify(player, "Creation bots: be Fire, Earth, Lightning or Ice first")
+		return
+	end
+	for _, bot in ipairs(CollectionService:GetTagged("CreationCrew")) do
+		if bot:GetAttribute("CrewOwner") == player.UserId and Creation.busy[bot] then return end -- mid-tornado
+	end
+	removeCrew(player)
+	-- square of 4 corners, 9 studs from its middle; you're the corner you stand on, the
+	-- middle is in front of you
+	local look = root.CFrame.LookVector
+	look = Vector3.new(look.X, 0, look.Z)
+	look = look.Magnitude > 0.1 and look.Unit or Vector3.new(0, 0, -1)
+	local center = root.Position + look * 9
+	local base = math.atan2(-look.Z, -look.X) - (myIndex - 1) * math.pi / 2
+	for i, el in ipairs(order) do
+		if i ~= myIndex then
+			local a = base + (i - 1) * math.pi / 2
+			local bot = Bots.make(el, center + Vector3.new(math.cos(a), 0, math.sin(a)) * 9, "CrewBot_" .. el, center)
+			bot:FindFirstChildOfClass("Humanoid").DisplayName = el .. " (your crew)"
+			bot:SetAttribute("CrewOwner", player.UserId)
+			bot:SetAttribute("CrewElement", el)
+			CollectionService:AddTag(bot, "CreationCrew")
+		end
+	end
+	notify(player, ("Creation crew ready: press %s"):format(Config.CreationKey and Config.CreationKey.Name or "T"))
+end
+
 remote.OnServerEvent:Connect(function(player, action, value)
 	if typeof(value) ~= "string" then return end
 	if action == "character" then
 		local ninja = Roster.find(value)
 		if not ninja and value ~= "You" then return end
-		player:SetAttribute("GoldenWeapon", nil) -- back to the character's own weapon
+		player:SetAttribute("GoldenWeapons", nil) -- back to the character's own weapon
 		player:SetAttribute("Ninja", ninja and ninja.Name or nil)
 		if ninja then player:SetAttribute("SpinjitzuElement", ninja.Element) end
 		task.spawn(applyLook, player)
 	elseif action == "weapon" then
-		if value ~= "None" and not GoldenWeapons.Weapons[value] then return end
-		if value ~= "None" and not Roster.AnyWeapon then
-			local own = GoldenWeapons.ByElement[player:GetAttribute("SpinjitzuElement") or ""]
-			if own ~= value then return end
-		end
-		player:SetAttribute("GoldenWeapon", value)
+		pickWeapon(player, value)
+	elseif action == "bots" then
+		if value == "creation" then spawnCrew(player) elseif value == "remove" then removeCrew(player) end
 	end
 end)
 
@@ -101,6 +195,7 @@ end
 for _, player in ipairs(Players:GetPlayers()) do onPlayer(player) end
 Players.PlayerAdded:Connect(onPlayer)
 Players.PlayerRemoving:Connect(function(player)
+	removeCrew(player)
 	originals[player] = nil
 	pending[player] = nil
 end)
