@@ -1,4 +1,4 @@
--- GoldenWeaponsServer v7.2  (Script in ServerScriptService)
+-- GoldenWeaponsServer v7.3  (Script in ServerScriptService)
 -- Gives every player the Golden Weapon of their element on spawn (slot 1) and swaps it when
 -- they switch element: Lightning = Nunchucks of Lightning, Fire = Sword of Fire,
 -- Earth = Scythe of Quakes, Ice = Shurikens of Ice. The menu can hand out several at once (player
@@ -19,6 +19,7 @@ local RunService = game:GetService("RunService")
 local GoldenWeapons = require(ReplicatedStorage:WaitForChild("GoldenWeapons"))
 local HitEffects = require(script.Parent:WaitForChild("HitEffects"))
 local TrainingDummy = require(script.Parent:WaitForChild("TrainingDummy"))
+local Status = require(script.Parent:WaitForChild("StatusEffects"))
 local Config = require(ReplicatedStorage:WaitForChild("SpinjitzuConfig"))
 local N = GoldenWeapons.Nunchucks
 local S = GoldenWeapons.Sword
@@ -227,82 +228,9 @@ local function shatter(pos)
 	pe:Emit(24)
 end
 
--- frozen: can't move, in a block of ice. Hitting again restarts the time.
+-- frozen: can't move, ice grows up to the neck (StatusEffects). Hitting again restarts the time.
 local function freeze(model, hum, seconds)
-	local root = model:FindFirstChild("HumanoidRootPart")
-	if not root then return end
-	local token = (model:GetAttribute("FreezeToken") or 0) + 1
-	model:SetAttribute("FreezeToken", token)
-	if model:GetAttribute("FrozenSpeed") == nil then
-		model:SetAttribute("FrozenSpeed", hum.WalkSpeed)
-		model:SetAttribute("FrozenJump", hum.UseJumpPower and hum.JumpPower or hum.JumpHeight)
-	end
-	hum.WalkSpeed = 0
-	if hum.UseJumpPower then hum.JumpPower = 0 else hum.JumpHeight = 0 end
-
-	local old = model:FindFirstChild("IceBlock")
-	if old then old:Destroy() end
-	local cf, size = model:GetBoundingBox()
-	local ice = Instance.new("Part")
-	ice.Name = "IceBlock"
-	ice.Size = size + Vector3.new(0.6, 0.4, 0.6)
-	ice.CFrame = cf
-	ice.Material = Enum.Material.Ice
-	ice.Color = K.IceColor
-	ice.Transparency = 0.45
-	ice.Anchored, ice.CanCollide, ice.CanQuery, ice.CanTouch, ice.Massless = false, false, false, false, true
-	local w = Instance.new("WeldConstraint")
-	w.Part0, w.Part1 = root, ice
-	w.Parent = ice
-	ice.Parent = model
-
-	task.delay(seconds, function()
-		if model:GetAttribute("FreezeToken") ~= token then return end
-		if ice.Parent then
-			shatter(ice.Position)
-			ice:Destroy()
-		end
-		if hum.Parent then
-			hum.WalkSpeed = model:GetAttribute("FrozenSpeed") or 16
-			local jump = model:GetAttribute("FrozenJump")
-			if jump then
-				if hum.UseJumpPower then hum.JumpPower = jump else hum.JumpHeight = jump end
-			end
-		end
-		model:SetAttribute("FrozenSpeed", nil)
-		model:SetAttribute("FrozenJump", nil)
-	end)
-end
-
-----------------------------------------------------------------------------------------
--- tools
-----------------------------------------------------------------------------------------
-
--- fire burst where the Sword of Fire's finisher lands
-local function fireBurst(pos)
-	local a = Instance.new("Attachment")
-	a.Parent = fxAnchor(pos, 1.5)
-	local pe = Instance.new("ParticleEmitter")
-	pe.Texture = "rbxasset://textures/particles/fire_main.dds"
-	pe.Color = ColorSequence.new(S.FlameColor, S.FlameColor2)
-	pe.LightEmission = 1
-	pe.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1.2), NumberSequenceKeypoint.new(1, 0.2) })
-	pe.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(1, 1) })
-	pe.Lifetime = NumberRange.new(0.3, 0.55)
-	pe.Speed = NumberRange.new(16, 26)
-	pe.SpreadAngle = Vector2.new(180, 8)
-	pe.EmissionDirection = Enum.NormalId.Front
-	pe.Drag = 5
-	pe.Rate = 0
-	pe.Parent = a
-	pe:Emit(70)
-	local light = Instance.new("PointLight")
-	light.Color = S.HitColor
-	light.Brightness = 5
-	light.Range = 16
-	light.Parent = a
-	task.delay(0.2, function() light.Enabled = false end)
-	Debris:AddItem(a, 1.5)
+	Status.freeze({ Color = K.IceColor, CoreColor = Color3.new(1, 1, 1) }, model, hum, seconds)
 end
 
 -- Scythe of Quakes' slam: shockwave along the ground + rocks bursting out, hits everyone nearby

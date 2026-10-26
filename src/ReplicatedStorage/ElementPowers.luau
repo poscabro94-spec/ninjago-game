@@ -194,6 +194,15 @@ Powers.ClashPush = 0.025
 Powers.ClashDamage = 30         -- the loser takes this, plus both elements' effects
 Powers.ClashMaxTime = 15        -- nobody won by then: both get knocked back
 
+-- the NPC you fight (menu > Duels > Fight an NPC)
+Powers.FightNPC = {
+	Health = 400,
+	MashRate = 4.5,               -- presses a second in a clash (a quick human does 6-8)
+	DamageScale = 0.4,            -- its shots and beams do this much of the normal damage
+	Pause = { 3.5, 5.5 },         -- seconds between its attacks
+	BeamTime = 2,                 -- seconds it holds a beam
+}
+
 ----------------------------------------------------------------------------------------
 -- arm poses (NinjaAnimator convention: +x swings a hanging arm forward, +z swings the
 -- right arm out / the left arm in)

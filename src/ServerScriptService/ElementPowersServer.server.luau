@@ -1,4 +1,4 @@
--- ElementPowersServer v2.0  (Script in ServerScriptService)
+-- ElementPowersServer v2.1  (Script in ServerScriptService)
 -- The elemental powers (settings in ElementPowers): Lightning, Fire, Ice, Earth.
 -- The client (ElementPowersClient) sends:
 --   "ball", aim         tap left click: next shot of the combo
@@ -495,7 +495,8 @@ end
 
 local combos = {} -- [key] = { step, start, len, P }
 
-local function throw(key, check, aim)
+-- npc = the bot's controller (its damageScale weakens its shots)
+local function throw(key, check, aim, npc)
 	local character, root, P = check()
 	if not character or character:GetAttribute("PowerBeam") then return end
 	local c = combos[key]
@@ -508,6 +509,7 @@ local function throw(key, check, aim)
 	if now - (c.start + c.len) > P.ComboWindow then c.step = 0 end
 	c.step = c.step % #P.Balls + 1
 	local ball = P.Balls[c.step]
+	if npc and npc.damageScale then ball = setmetatable({ damage = ball.damage * npc.damageScale }, { __index = ball }) end
 	c.start, c.len = now, ball.time
 	character:SetAttribute("PowerAim", aim)
 	character:SetAttribute("PowerElement", elementName(P))
@@ -562,10 +564,11 @@ local function startBeam(key, check, aim, npc)
 end
 
 local function beamHit(b, P, model, hum, now, dir)
-	hum:TakeDamage(P.BeamDamage)
+	local amount = P.BeamDamage * (b.npc and b.npc.damageScale or 1)
+	hum:TakeDamage(amount)
 	model:SetAttribute("LastHit", now)
 	-- show the damage every few ticks, added up, so the numbers stay readable
-	b.total[model] = (b.total[model] or 0) + P.BeamDamage
+	b.total[model] = (b.total[model] or 0) + amount
 	local tRoot = model:FindFirstChild("HumanoidRootPart")
 	if b.ticks % 3 == 0 then
 		if tRoot then HitEffects.show(P, tRoot, model, b.total[model], false) end
@@ -875,7 +878,7 @@ end
 local function comboAt(caster, aim)
 	for i, ball in ipairs(caster.P.Balls) do
 		if not caster.check() then return end
-		throw(caster.bot, caster.check, aim())
+		throw(caster.bot, caster.check, aim(), caster)
 		task.wait(ball.time + (i == #caster.P.Balls and 0 or 0.3))
 	end
 end
@@ -941,9 +944,12 @@ local function spawnFight(player, element)
 	removeNpcs(player, "fight")
 	local pos, _, root = inFront(player, 30)
 	if not pos then return end
+	local F = Powers.FightNPC
 	local C = makeCaster(element, pos, root.Position, "Fight_" .. element, {
-		owner = player.UserId, kind = "fight", display = element .. " ninja", health = 400, hittable = true, mashRate = 7,
+		owner = player.UserId, kind = "fight", display = element .. " ninja", health = F.Health, hittable = true, mashRate = F.MashRate,
 	})
+	C.damageScale = F.DamageScale
+	local function pause() return F.Pause[1] + math.random() * (F.Pause[2] - F.Pause[1]) end
 	C.hum.Died:Connect(function()
 		task.wait(3)
 		if C.bot.Parent then C.bot:Destroy() end
@@ -965,7 +971,7 @@ local function spawnFight(player, element)
 						C.bot:SetAttribute("PowerAim", aimAt())
 						if os.clock() > beamUntil then
 							stopBeam(C.bot)
-							nextMove = os.clock() + 2
+							nextMove = os.clock() + pause()
 						end
 					end
 				elseif beamingAtMe then
@@ -975,10 +981,10 @@ local function spawnFight(player, element)
 				elseif os.clock() >= nextMove then
 					if math.random() < 0.5 then
 						task.spawn(comboAt, C, aimAt)
-						nextMove = os.clock() + 3.5
+						nextMove = os.clock() + 2 + pause()
 					else
 						startBeam(C.bot, C.check, aimAt(), C)
-						beamUntil = os.clock() + 2.5
+						beamUntil = os.clock() + F.BeamTime
 					end
 				end
 			end

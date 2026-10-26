@@ -1,4 +1,4 @@
--- StatusEffects v1.1  (ModuleScript in ServerScriptService)
+-- StatusEffects v1.2  (ModuleScript in ServerScriptService)
 -- What the elemental powers leave behind on whoever they hit:
 --   burn(W, model, hum, seconds, damage)   on fire: `damage` every second
 --   shock(W, model, hum, seconds, damage)  electrocuted: flickering glow + `damage` every second
@@ -127,14 +127,15 @@ function Status.freeze(W, model, hum, seconds)
 	hum.WalkSpeed = 0
 	if hum.UseJumpPower then hum.JumpPower = 0 else hum.JumpHeight = 0 end
 
-	-- a block of ice that grows up from the floor until only the head sticks out
+	-- a block of ice that grows up from the floor until only the head sticks out. Sized from the
+	-- body (not the model's bounding box: weapons on the back or other attachments can be huge)
 	local old = model:FindFirstChild("IceBlock")
 	local fresh = old == nil
-	local cf, size = model:GetBoundingBox()
 	local head = model:FindFirstChild("Head")
-	local bottom = cf.Position.Y - size.Y / 2
-	local top = head and (head.Position.Y - head.Size.Y / 2 + 0.1) or (cf.Position.Y + size.Y / 2 - 1.2)
-	local full = math.max(top - bottom, 0.5)
+	local bottom = root.Position.Y - root.Size.Y / 2 - hum.HipHeight
+	local top = head and (head.Position.Y - head.Size.Y / 2 + 0.1) or (root.Position.Y + root.Size.Y)
+	local full = math.clamp(top - bottom, 0.5, 12)
+	local size = Vector3.new(root.Size.X * 1.6, 0, root.Size.Z * 2.2)
 	local ice = old or Instance.new("Part")
 	ice.Name = "IceBlock"
 	ice.Material = Enum.Material.Ice
