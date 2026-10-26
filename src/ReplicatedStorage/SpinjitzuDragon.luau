@@ -1,4 +1,4 @@
--- SpinjitzuDragon v15.2  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuDragon v16.0  (ModuleScript in ReplicatedStorage)
 -- Elemental dragon that appears behind the character after Spinjitzu (Rising Dragon), built from
 -- plain parts like the show's energy dragons: solid-looking panels in the element colour with thin
 -- glowing outlines. One tall column behind you: a cap-shaped faceted head on top (V seams down
@@ -18,6 +18,7 @@ Dragon.__index = Dragon
 local WHITE = Color3.new(1, 1, 1)
 local TEX_SPARK = "rbxasset://textures/particles/sparkles_main.dds"
 local TEX_FIRE = "rbxasset://textures/particles/fire_main.dds"
+local TEX_SMOKE = "rbxasset://textures/particles/smoke_main.dds"
 
 local function lerp(a, b, t) return a + (b - a) * t end
 local function smoothstep(e0, e1, x)
@@ -116,7 +117,7 @@ function Dragon.new(character, color, highlight, elementName)
 	self.flakeCol = Color3.fromHSV(h, 0.9, 0.85)
 	self.flakeDark = Color3.fromHSV(h, 0.95, 0.55)
 	-- see-through blocks + wings, bright edges + bones, white glow inside (presets can override)
-	self.plateCol = preset.DragonPlate or Color3.fromHSV(h, math.max(s, 0.85), 0.68)
+	self.plateCol = preset.DragonPlate or Color3.fromHSV(h, math.max(s, 0.8), 0.8)
 	self.edgeCol = preset.DragonEdge or self.plateCol:Lerp(WHITE, 0.3)
 	self.wingCol = preset.DragonWing or self.plateCol
 	self.coreCol = WHITE:Lerp(self.glowCol, 0.15)
@@ -188,8 +189,20 @@ function Dragon:_add(root, className, cf, size, color, base, material)
 	return p
 end
 
--- a piece from DragonModel: solid facets (see-through ones show the seams inside), thin glowing outlines,
--- white glow blocks (eyes, inside the mouth)
+-- a piece from DragonModel: soft glowing panels (no outlines), white light blocks (eyes, inside
+-- the mouth)
+-- soft glowing mist in the dragon's colour (world space, so it trails when flying)
+function Dragon:_mist(parent, size)
+	self:_emitter(parent, {
+		Texture = TEX_SMOKE, Color = ColorSequence.new(self.glowCol, self.edgeCol), LightEmission = 0.8, Brightness = 2,
+		Size = NumberSequence.new({ kp(0, 0.7 * size), kp(1, 1.8 * size) }),
+		Transparency = NumberSequence.new({ kp(0, 1), kp(0.25, 0.5), kp(1, 1) }),
+		Lifetime = NumberRange.new(0.8, 1.4), Rate = 6, Speed = NumberRange.new(0.5, 2),
+		SpreadAngle = Vector2.new(180, 180), Acceleration = Vector3.new(0, 2, 0), Drag = 1,
+		Rotation = NumberRange.new(0, 360), RotSpeed = NumberRange.new(-40, 40),
+	})
+end
+
 function Dragon:_facets(root, data, scale, color)
 	local tr = data.tris
 	for i = 1, #tr, 9 do
@@ -198,17 +211,8 @@ function Dragon:_facets(root, data, scale, color)
 		local c = Vector3.new(tr[i + 6], tr[i + 7], tr[i + 8]) * scale
 		if (b - a):Cross(c - a).Magnitude > 1e-6 then
 			for _, w in ipairs(triangle(a, b, c, 0.05 * scale)) do
-				self:_add(root, "WedgePart", w[1], w[2], color or self.plateCol, 0, Enum.Material.SmoothPlastic)
+				self:_add(root, "WedgePart", w[1], w[2], color or self.plateCol, 0.2)
 			end
-		end
-	end
-	local e = data.edges
-	for i = 1, #e, 7 do
-		local a = Vector3.new(e[i], e[i + 1], e[i + 2]) * scale
-		local b = Vector3.new(e[i + 3], e[i + 4], e[i + 5]) * scale
-		local th = e[i + 6] * scale
-		if (b - a).Magnitude > 1e-4 then
-			self:_add(root, "Part", CFrame.lookAt((a + b) / 2, b), Vector3.new(th, th, (b - a).Magnitude + th), self.edgeCol, 0.1)
 		end
 	end
 	-- white light: blocks, oval eyes (a sphere mesh stretched), and flat triangles (inside the mouth)
@@ -264,6 +268,7 @@ function Dragon:_buildBody()
 			return a
 		end
 		-- long drips of energy hanging straight down off the wing (the bottom end is placed each frame)
+		for _, name in ipairs(M.WingDrips) do self:_mist(point(name), sc) end
 		for _, name in ipairs(M.WingDrips) do
 			local top = point(name)
 			local bottom = Instance.new("Attachment")
@@ -292,6 +297,13 @@ function Dragon:_buildBody()
 		Lifetime = NumberRange.new(0.3, 0.55), Rate = 30, Speed = NumberRange.new(22 * sc, 40 * sc),
 		SpreadAngle = Vector2.new(180, 180), Drag = 2,
 	})
+	-- mist along the body
+	for _, y in ipairs({ 3.5, 1, -1.5, -4 }) do
+		local a = Instance.new("Attachment")
+		a.Position = Vector3.new(0, y, Model.NeckTop.Z) * sc
+		a.Parent = self.body
+		self:_mist(a, 1.2 * sc)
+	end
 	-- streaks raining down / spraying out below it
 	local below = Instance.new("Attachment")
 	below.Position = Vector3.new(0, -1.5 * sc, Model.NeckTop.Z * sc)

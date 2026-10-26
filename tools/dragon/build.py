@@ -33,7 +33,7 @@ def piece(name, p):
             f"\t\tgtris = {{ -- glowing white triangles\n{nums(gtris, 9)}\n\t\t}},\n\t}},\n")
 
 
-DRIPS = ["Wx", "Tb", "P"]
+DRIPS = ["Wx", "Tb", "P1", "P"]
 
 
 def main():

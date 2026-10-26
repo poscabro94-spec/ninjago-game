@@ -166,10 +166,14 @@ BODY_RINGS = [  # y, half width, depth (front to back)   from the neck top down 
 ]
 BODY_V = 0.45       # the plate seams on the back dip into V's this deep
 TAIL_TIP = V(0, -6.0, BODY_FRONT + 0.25)
-NECK_TOP = V(0, 5.03, BODY_FRONT + 0.55)  # where the head sits (head space origin goes here)
+NECK_TOP = V(0, 5.28, BODY_FRONT + 0.6)  # where the head sits (head space origin goes here)
+
+
+BODY_GROW = 1.2   # the body is this much wider + deeper than the numbers above
 
 
 def body_ring(y, w, d):
+    w, d = w * BODY_GROW, d * BODY_GROW
     zb = BODY_FRONT + d
     right = [(0.6 * w, y, zb), (w, y, BODY_FRONT + 0.55 * d), (0.75 * w, y, BODY_FRONT), ]
     pts = [V(0, y - BODY_V, zb + 0.22)] + [V(*q) for q in right] + [V(0, y, BODY_FRONT)]
@@ -212,10 +216,11 @@ def _arc(a, b, bow, n=5):
 
 
 WP = {
-    "S": V(0, 0, 0), "E": V(0.75, 0.4, 0), "N": V(1.25, -0.2, 0), "K": V(1.85, 0.45, 0), "W": V(5.9, 0.95, 0),
-    "Wx": V(6.45, 1.3, 0), "Tb": V(5.55, -2.95, 0), "P": V(3.2, -2.75, 0), "B": V(0.25, -1.7, 0),
+    "S": V(0, 0, 0), "E": V(0.75, 0.4, 0), "N": V(1.25, -0.2, 0), "K": V(1.85, 0.45, 0), "W": V(8.4, 1.35, 0),
+    "Wx": V(9.1, 1.8, 0), "Tb": V(8.0, -3.3, 0), "P1": V(5.6, -3.1, 0), "P": V(3.2, -2.8, 0), "B": V(0.25, -1.7, 0),
 }
-SCALLOP1 = _arc(WP["Tb"], WP["P"], 1.05)
+SCALLOP0 = _arc(WP["Tb"], WP["P1"], 0.95)
+SCALLOP1 = _arc(WP["P1"], WP["P"], 0.95)
 SCALLOP2 = _arc(WP["P"], WP["B"], 0.85)
 
 
@@ -243,21 +248,21 @@ def ear_clip(poly):
     tris.append(tuple(pts))
     return tris
 WING_OUTLINE = ["S", "E", "N", "K", "W", "Tb"]  # then the two scallops back to the body
-HINGE = V(1.5, 1.7, BODY_FRONT + 0.75)   # right wing's hinge, root space (on the body's side)
+HINGE = V(1.85, 1.7, BODY_FRONT + 0.85)   # right wing's hinge, root space (on the body's side)
 HINGE_YAW = 0.12
 WING_RAISE = 0.22                         # wings tilted up toward the tips
 
 
 def build_wing():
     p = Piece()
-    outline = [WP[k] for k in WING_OUTLINE] + SCALLOP1 + [WP["P"]] + SCALLOP2 + [WP["B"]]
+    outline = ([WP[k] for k in WING_OUTLINE] + SCALLOP0 + [WP["P1"]] + SCALLOP1 + [WP["P"]] + SCALLOP2 + [WP["B"]])
     for a, b, c in ear_clip(outline):
         p.tri(a, b, c)
-    # leading edge (with the little W by the body), outer edge, bone, scalloped bottom
+    # bones: leading edge, outer edge, and one down to each point between the sections
     for a, b, th in [("S", "E", 0.12), ("E", "N", 0.1), ("N", "K", 0.1), ("K", "W", 0.14), ("W", "Tb", 0.09),
-                     ("N", "P", 0.07), ("B", "S", 0.07), ("W", "Wx", 0.08)]:
+                     ("N", "P", 0.07), ("K", "P1", 0.07), ("B", "S", 0.07), ("W", "Wx", 0.08)]:
         p.edge(WP[a], WP[b], th)
-    for chain in ([WP["Tb"]] + SCALLOP1 + [WP["P"]], [WP["P"]] + SCALLOP2 + [WP["B"]]):
+    for chain in ([WP["Tb"]] + SCALLOP0 + [WP["P1"]], [WP["P1"]] + SCALLOP1 + [WP["P"]], [WP["P"]] + SCALLOP2 + [WP["B"]]):
         for a, b in zip(chain[:-1], chain[1:]):
             p.edge(a, b, 0.06)
     return p
@@ -322,7 +327,7 @@ if __name__ == "__main__":
             m, hot, glow = to_mesh(piece, G, tube)
             w = mul(root, cf)
             sc.mesh(m, w, (45, 60, 240), (0, 0, 0))
-            sc.mesh(hot, w, (150, 165, 255), (150, 165, 255), glow=1.0)
+            pass  # (no outlines any more)
             sc.mesh(glow, w, (255, 255, 255), (0, 0, 0), glow=1.0)
         return [sc.render(v, span=span, center=center) for v in views]
     hover = (np.eye(3), np.zeros(3))
