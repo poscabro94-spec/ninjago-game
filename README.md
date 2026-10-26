@@ -10,6 +10,7 @@ All the scripts from `Place1.rbxl`, laid out for [Rojo](https://rojo.space) so t
 | `src/ReplicatedStorage` | ReplicatedStorage | Spinjitzu config / effect / elements / dragon, dragon mesh builder, NinjaAnimator (procedural player animations), GoldenWeapons (nunchuck moves) |
 | `src/StarterPlayer/StarterPlayerScripts` | StarterPlayerScripts | Spinjitzu client (effects, flight, particle budget), parkour controls |
 | `assets/` | (import by hand) | `NunchuckGold.obj`: import with Studio's 3D Importer and put the model in ReplicatedStorage as `NunchuckGold` |
+| (your model) | (import by hand) | Sword of Fire: import it as one mesh with the 3D Importer and put it in ReplicatedStorage as `SwordOfFire`. Until then a placeholder sword made of parts is used. If it's held by the blade, set `FlipModel = true` in `GoldenWeapons` |
 
 File endings: `.server.luau` = Script, `.client.luau` = LocalScript, `.luau` = ModuleScript.
 

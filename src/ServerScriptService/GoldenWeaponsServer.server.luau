@@ -1,8 +1,9 @@
--- GoldenWeaponsServer v4.6  (Script in ServerScriptService)
--- Builds the Nunchucks of Lightning tool and gives one to every player on spawn (slot 1).
--- When not equipped, both sticks sit crossed on your back. Click = 4-hit combo.
+-- GoldenWeaponsServer v5.0  (Script in ServerScriptService)
+-- Gives every player the Golden Weapon of their element on spawn (slot 1) and swaps it when
+-- they switch element: Lightning = Nunchucks of Lightning, Fire = Sword of Fire.
+-- When not equipped, the weapon sits on your back. Click = 4-hit combo.
 -- The server picks the swing, plays the sounds and does the hit check
--- (damage + knockback + blue hit flash). Also spawns a Training Dummy to fight.
+-- (damage + knockback + hit flash in the weapon's colour). Also spawns a Training Dummy to fight.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
@@ -10,14 +11,16 @@ local CollectionService = game:GetService("CollectionService")
 local Debris = game:GetService("Debris")
 
 local GoldenWeapons = require(ReplicatedStorage:WaitForChild("GoldenWeapons"))
+local Config = require(ReplicatedStorage:WaitForChild("SpinjitzuConfig"))
 local N = GoldenWeapons.Nunchucks
+local S = GoldenWeapons.Sword
 
 ----------------------------------------------------------------------------------------
 -- mesh + stick building
 ----------------------------------------------------------------------------------------
 
-local function findMesh()
-	for _, name in ipairs({ N.ModelName, N.MeshName }) do
+local function findMesh(names)
+	for _, name in ipairs(names) do
 		for _, where in ipairs({ ReplicatedStorage, workspace, game:GetService("ServerStorage") }) do
 			local obj = where:FindFirstChild(name, true)
 			if obj then
@@ -143,17 +146,26 @@ end
 -- hits
 ----------------------------------------------------------------------------------------
 
-local function hitFx(targetRoot, model, dmg, final)
-	local zap = sound(targetRoot, N.Sounds.Zap, 0.25)
-	zap.PlaybackSpeed = 1 + math.random() * 0.25
-	zap:Play()
-	local thud = sound(targetRoot, final and N.Sounds.Final or N.Sounds.Hit[math.random(1, #N.Sounds.Hit)], 0.8)
+local function hitFx(W, targetRoot, model, dmg, final)
+	if W.Sounds.Zap then
+		local zap = sound(targetRoot, W.Sounds.Zap, 0.25)
+		zap.PlaybackSpeed = 1 + math.random() * 0.25
+		zap:Play()
+		Debris:AddItem(zap, 3)
+	end
+	local thud = sound(targetRoot, final and W.Sounds.Final or W.Sounds.Hit[math.random(1, #W.Sounds.Hit)], 0.8)
 	thud:Play()
-	Debris:AddItem(zap, 3)
 	Debris:AddItem(thud, 4)
+	if final and W.BurnTime then
+		local fire = Instance.new("Fire")
+		fire.Heat, fire.Size = 8, 4
+		fire.Color, fire.SecondaryColor = W.HitColor, W.FlameColor
+		fire.Parent = targetRoot
+		Debris:AddItem(fire, W.BurnTime)
+	end
 
 	local hl = Instance.new("Highlight")
-	hl.FillColor = N.BoltColor
+	hl.FillColor = W.HitColor
 	hl.OutlineColor = Color3.new(1, 1, 1)
 	hl.FillTransparency = 0.35
 	hl.DepthMode = Enum.HighlightDepthMode.Occluded
@@ -163,7 +175,7 @@ local function hitFx(targetRoot, model, dmg, final)
 	local a = Instance.new("Attachment")
 	a.Parent = targetRoot
 	local pe = Instance.new("ParticleEmitter")
-	pe.Color = ColorSequence.new(N.BoltColor, Color3.new(1, 1, 1))
+	pe.Color = ColorSequence.new(W.HitColor, Color3.new(1, 1, 1))
 	pe.LightEmission = 1
 	pe.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.45), NumberSequenceKeypoint.new(1, 0) })
 	pe.Lifetime = NumberRange.new(0.15, 0.35)
@@ -173,7 +185,7 @@ local function hitFx(targetRoot, model, dmg, final)
 	pe.Rate = 160
 	pe.Parent = a
 	local light = Instance.new("PointLight")
-	light.Color = N.BoltColor
+	light.Color = W.HitColor
 	light.Brightness = 4
 	light.Range = 10
 	light.Parent = a
@@ -191,7 +203,7 @@ local function hitFx(targetRoot, model, dmg, final)
 	label.Font = Enum.Font.GothamBlack
 	label.TextScaled = true
 	label.Text = tostring(dmg)
-	label.TextColor3 = Color3.fromRGB(150, 215, 255)
+	label.TextColor3 = W.HitTextColor
 	label.TextStrokeTransparency = 0.2
 	label.Parent = gui
 	gui.Parent = targetRoot
@@ -206,7 +218,7 @@ local function hitFx(targetRoot, model, dmg, final)
 	end)
 end
 
-local function doHit(character, swing)
+local function doHit(W, character, swing)
 	local root = character:FindFirstChild("HumanoidRootPart")
 	if not root then return end
 	local center = swing.around and root.Position or (root.Position + root.CFrame.LookVector * (swing.name == "twirl" and 1.5 or 3))
@@ -228,23 +240,87 @@ local function doHit(character, swing)
 				away = away.Magnitude > 0.1 and away.Unit or root.CFrame.LookVector
 				tRoot.AssemblyLinearVelocity = away * swing.knock + Vector3.new(0, swing.up or 8, 0)
 			end
-			hitFx(tRoot, model, swing.damage, swing.final)
+			hitFx(W, tRoot, model, swing.damage, swing.final)
 		end
 	end
 end
 
 ----------------------------------------------------------------------------------------
--- tool
+-- tools
 ----------------------------------------------------------------------------------------
 
-local function buildTool(stickT)
+-- fire burst around you (Sword of Fire's spin slash)
+local function fireBurst(root)
+	local a = Instance.new("Attachment")
+	a.Parent = root
+	local pe = Instance.new("ParticleEmitter")
+	pe.Texture = "rbxasset://textures/particles/fire_main.dds"
+	pe.Color = ColorSequence.new(S.FlameColor, S.FlameColor2)
+	pe.LightEmission = 1
+	pe.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1.2), NumberSequenceKeypoint.new(1, 0.2) })
+	pe.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(1, 1) })
+	pe.Lifetime = NumberRange.new(0.3, 0.55)
+	pe.Speed = NumberRange.new(16, 26)
+	pe.SpreadAngle = Vector2.new(180, 8)
+	pe.EmissionDirection = Enum.NormalId.Front
+	pe.Drag = 5
+	pe.Rate = 0
+	pe.Parent = a
+	pe:Emit(70)
+	local light = Instance.new("PointLight")
+	light.Color = S.HitColor
+	light.Brightness = 5
+	light.Range = 16
+	light.Parent = a
+	task.delay(0.2, function() light.Enabled = false end)
+	Debris:AddItem(a, 1.5)
+end
+
+-- click = next hit of the combo (W = weapon settings)
+local function hookCombo(tool, W, handle)
+	tool:SetAttribute("Swing", 1)
+	tool:SetAttribute("SwingId", 0)
+	local swingSounds = {}
+	for i, id in ipairs(W.Sounds.Swing) do swingSounds[i] = sound(handle, id, 0.5) end
+	local combo = { step = 0, start = 0, len = 0 }
+
+	tool.Activated:Connect(function()
+		local character = tool.Parent
+		local hum = character and character:FindFirstChildOfClass("Humanoid")
+		if not hum or hum.Health <= 0 then return end
+		local now = os.clock()
+		if now - combo.start < combo.len * 0.8 then return end -- still mid-swing
+		if now - (combo.start + combo.len) > W.ComboWindow then combo.step = 0 end
+		combo.step = combo.step % #W.Swings + 1
+		local swing = W.Swings[combo.step]
+		combo.start, combo.len = now, swing.time
+		tool:SetAttribute("Swing", combo.step)
+		tool:SetAttribute("SwingId", (tool:GetAttribute("SwingId") or 0) + 1)
+
+		local s = swingSounds[math.random(1, #swingSounds)]
+		s.PlaybackSpeed = 0.9 + math.random() * 0.25
+		s:Play()
+		if swing.name == "spin" or swing.name == "spinSlash" then
+			task.delay(swing.time * 0.35, function()
+				s.PlaybackSpeed = 1.15
+				s:Play()
+			end)
+		end
+		task.delay(swing.time * swing.hitAt, function()
+			if tool.Parent ~= character then return end
+			doHit(W, character, swing)
+			local root = character:FindFirstChild("HumanoidRootPart")
+			if swing.burst and root then fireBurst(root) end
+		end)
+	end)
+end
+
+local function buildNunchucks(stickT)
 	local tool = Instance.new("Tool")
 	tool.Name = N.ToolName
 	tool.CanBeDropped = false
 	tool.RequiresHandle = true
 	tool.ToolTip = "Click to swing (4-hit combo)"
-	tool:SetAttribute("Swing", 1)
-	tool:SetAttribute("SwingId", 0)
 
 	local half = N.StickLength / 2
 	local handle = makeStick(stickT, "Handle")
@@ -308,12 +384,8 @@ local function buildTool(stickT)
 	sparks.Drag = 4
 	sparks.Parent = tail
 
-	local swingSounds = {}
-	for i, id in ipairs(N.Sounds.Swing) do swingSounds[i] = sound(handle, id, 0.5) end
-
+	hookCombo(tool, N, handle)
 	local hold = GoldenWeapons.HoldOffset(R)
-	local combo = { step = 0, start = 0, len = 0 }
-
 	tool.Equipped:Connect(function()
 		local character = tool.Parent
 		local hand = character and character:FindFirstChild("RightHand")
@@ -321,44 +393,149 @@ local function buildTool(stickT)
 		if ga then tool.Grip = hold:Inverse() * ga.CFrame end
 	end)
 
-	tool.Activated:Connect(function()
-		local character = tool.Parent
-		local hum = character and character:FindFirstChildOfClass("Humanoid")
-		if not hum or hum.Health <= 0 then return end
-		local now = os.clock()
-		if now - combo.start < combo.len * 0.8 then return end -- still mid-swing
-		if now - (combo.start + combo.len) > N.ComboWindow then combo.step = 0 end
-		combo.step = combo.step % #N.Swings + 1
-		local swing = N.Swings[combo.step]
-		combo.start, combo.len = now, swing.time
-		tool:SetAttribute("Swing", combo.step)
-		tool:SetAttribute("SwingId", (tool:GetAttribute("SwingId") or 0) + 1)
+	return tool
+end
 
-		local s = swingSounds[math.random(1, #swingSounds)]
-		s.PlaybackSpeed = 0.9 + math.random() * 0.25
-		s:Play()
-		if swing.name == "spin" then
-			task.delay(swing.time * 0.35, function()
-				s.PlaybackSpeed = 1.15
-				s:Play()
-			end)
+-- maps an imported sword mesh onto sword space: longest side -> +Y (tip), thinnest -> X
+local function swordAxis(size)
+	local dims = { size.X, size.Y, size.Z }
+	local order = { 1, 2, 3 }
+	table.sort(order, function(a, b) return dims[a] > dims[b] end)
+	local long, mid, thin = order[1], order[2], order[3]
+	local img = {}
+	img[long] = S.FlipModel and -Vector3.yAxis or Vector3.yAxis
+	img[thin] = Vector3.xAxis
+	-- the middle axis follows from the other two (keeps it right-handed)
+	if mid == 1 then img[1] = img[2]:Cross(img[3])
+	elseif mid == 2 then img[2] = img[3]:Cross(img[1]) end
+	return CFrame.fromMatrix(Vector3.zero, img[1], img[2])
+end
+
+-- the sword itself: the imported "SwordOfFire" mesh, or a placeholder made of parts.
+-- returns the main part (everything else is welded to it), its axis and points along the blade
+-- (sword-space Y): grip = where the hand holds it, base = where the blade starts, tip
+local function makeSword(template, name)
+	local main, R, grip, base, tip
+	if template then
+		main = template:Clone()
+		for _, c in ipairs(main:GetChildren()) do c:Destroy() end
+		local sz = main.Size
+		main.Size = sz * (S.Length / math.max(sz.X, sz.Y, sz.Z))
+		main.TextureID = ""
+		main.Color, main.Material, main.Reflectance = S.Color, S.Material, S.Reflectance
+		R = swordAxis(main.Size)
+		local half = S.Length / 2
+		grip, base, tip = -half + S.GripFromEnd, -half + S.HiltLength, half
+	else
+		local bl, bw, bt, gl = S.BladeLength, S.BladeWidth, S.BladeThickness, S.GripLength
+		main = Instance.new("Part")
+		main.Size = Vector3.new(bt, bl, bw)
+		main.Color, main.Material, main.Reflectance = S.Color, S.Material, S.Reflectance
+		R = CFrame.identity
+		local function piece(pname, size, cf, color, material, shape)
+			local p = Instance.new("Part")
+			p.Name = pname
+			p.Size = size
+			if shape then p.Shape = shape end
+			bare(p)
+			p.Color = color or S.Color
+			p.Material = material or S.Material
+			p.Reflectance = material and 0 or S.Reflectance
+			p.CFrame = main.CFrame * cf
+			local w = Instance.new("WeldConstraint")
+			w.Part0, w.Part1 = main, p
+			w.Parent = p
+			p.Parent = main
 		end
-		task.delay(swing.time * swing.hitAt, function()
-			if tool.Parent == character then doHit(character, swing) end
-		end)
-	end)
+		local guardY = -bl / 2 - 0.11
+		piece("Point", Vector3.new(bt, bw * 0.71, bw * 0.71), CFrame.new(0, bl / 2, 0) * CFrame.Angles(math.pi / 4, 0, 0))
+		piece("Core", Vector3.new(bt + 0.02, bl * 0.85, 0.08), CFrame.new(0, -bl * 0.05, 0), S.CoreColor, Enum.Material.Neon)
+		piece("Guard", Vector3.new(0.26, 0.22, 1.1), CFrame.new(0, guardY, 0))
+		piece("Grip", Vector3.new(gl, 0.22, 0.22), CFrame.new(0, guardY - 0.11 - gl / 2, 0) * CFrame.Angles(0, 0, math.pi / 2),
+			S.GripColor, Enum.Material.Fabric, Enum.PartType.Cylinder)
+		piece("Pommel", Vector3.new(0.3, 0.3, 0.3), CFrame.new(0, guardY - 0.11 - gl - 0.1, 0), nil, nil, Enum.PartType.Ball)
+		grip, base, tip = guardY - 0.11 - gl / 2, -bl / 2, bl / 2 + bw * 0.35
+	end
+	main.Name = name
+	bare(main)
+	return main, R, grip, base, tip
+end
 
+local function buildSword(template)
+	local tool = Instance.new("Tool")
+	tool.Name = S.ToolName
+	tool.CanBeDropped = false
+	tool.RequiresHandle = true
+	tool.ToolTip = "Click to swing (4-hit combo)"
+
+	local handle, R, grip, base, tip = makeSword(template, "Handle")
+	handle.Parent = tool
+	local tipAt = att(handle, "Tip", Vector3.new(0, tip, 0), R)
+	local baseAt = att(handle, "BladeBase", Vector3.new(0, base, 0), R)
+	goldTrail(handle, baseAt, tipAt).Color = ColorSequence.new(S.TrailColor, S.TrailColor2)
+
+	-- flames along the blade: an invisible part covering it carries the emitter + light
+	local zone = Instance.new("Part")
+	zone.Name = "FlameZone"
+	zone.Size = Vector3.new(0.15, (tip - base) * 0.9, S.BladeWidth * 0.8)
+	bare(zone)
+	zone.Transparency = 1
+	zone.CFrame = handle.CFrame * R:Inverse() * CFrame.new(0, (tip + base) / 2, 0)
+	local w = Instance.new("WeldConstraint")
+	w.Part0, w.Part1 = handle, zone
+	w.Parent = zone
+	zone.Parent = tool
+	local flames = Instance.new("ParticleEmitter")
+	flames.Name = "Flames"
+	flames.Texture = "rbxasset://textures/particles/fire_main.dds"
+	flames.Color = ColorSequence.new(S.FlameColor, S.FlameColor2)
+	flames.LightEmission = 1
+	flames.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(1, 0) })
+	flames.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(1, 1) })
+	flames.Lifetime = NumberRange.new(0.25, 0.45)
+	flames.Speed = NumberRange.new(0.5, 1.5)
+	flames.Acceleration = Vector3.new(0, 6, 0)
+	flames.RotSpeed = NumberRange.new(-90, 90)
+	flames.Rotation = NumberRange.new(0, 360)
+	flames.Rate = S.FlameRate
+	flames.Parent = zone
+	local glow = Instance.new("PointLight")
+	glow.Color = S.HitColor
+	glow.Brightness = 1.5
+	glow.Range = 7
+	glow.Parent = zone
+
+	local sparks = Instance.new("ParticleEmitter")
+	sparks.Name = "Sparks"
+	sparks.Rate = 0
+	sparks.Color = ColorSequence.new(S.FlameColor, S.FlameColor2)
+	sparks.LightEmission = 1
+	sparks.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 0) })
+	sparks.Lifetime = NumberRange.new(0.15, 0.4)
+	sparks.Speed = NumberRange.new(6, 14)
+	sparks.SpreadAngle = Vector2.new(180, 180)
+	sparks.Drag = 4
+	sparks.Parent = tipAt
+
+	hookCombo(tool, S, handle)
+	local hold = GoldenWeapons.SwordHold(R, grip)
+	tool.Equipped:Connect(function()
+		local character = tool.Parent
+		local hand = character and character:FindFirstChild("RightHand")
+		local ga = hand and hand:FindFirstChild("RightGripAttachment")
+		if ga then tool.Grip = hold:Inverse() * ga.CFrame end
+	end)
 	return tool
 end
 
 -- both sticks crossed on your back while the tool isn't out
-local function buildHolster(character, stickT)
+local function buildNunchuckHolster(character, stickT)
 	local torso = character:WaitForChild("UpperTorso", 5)
 	if not torso then return nil end
-	local old = character:FindFirstChild("NunchuckHolster")
+	local old = character:FindFirstChild(N.HolsterName)
 	if old then old:Destroy() end
 	local folder = Instance.new("Folder")
-	folder.Name = "NunchuckHolster"
+	folder.Name = N.HolsterName
 	for i, side in ipairs({ -1, 1 }) do
 		local p = makeStick(stickT, "Back" .. i)
 		local R = axisFor(p.Size)
@@ -392,6 +569,27 @@ local function buildHolster(character, stickT)
 	return folder
 end
 
+-- sword across your back: hilt up over the right shoulder, tip down by the left hip
+local function buildSwordHolster(character, template)
+	local torso = character:WaitForChild("UpperTorso", 5)
+	if not torso then return nil end
+	local old = character:FindFirstChild(S.HolsterName)
+	if old then old:Destroy() end
+	local folder = Instance.new("Folder")
+	folder.Name = S.HolsterName
+	local p, R, grip = makeSword(template, "BackSword")
+	local swordCF = CFrame.new(0.55, 1.05, 0.65) * CFrame.Angles(0, 0, math.pi - 0.6) * CFrame.Angles(0, math.pi / 2, 0)
+		* CFrame.new(0, -grip, 0)
+	p.CFrame = torso.CFrame * swordCF * R
+	local w = Instance.new("Weld")
+	w.Part0, w.Part1 = torso, p
+	w.C0 = swordCF * R
+	w.Parent = p
+	p.Parent = folder
+	folder.Parent = character
+	return folder
+end
+
 local function showHolster(folder, on)
 	if not folder then return end
 	for _, d in ipairs(folder:GetDescendants()) do
@@ -399,19 +597,58 @@ local function showHolster(folder, on)
 	end
 end
 
+local function elementOf(player)
+	local e = player:GetAttribute("SpinjitzuElement")
+	if e and Config.Presets[e] then return e end
+	return Config.Element
+end
+
+-- remove every Golden Weapon (and the one on your back) from the player
+local function clearWeapons(player, backpack, char)
+	for _, W in pairs(GoldenWeapons.Weapons) do
+		for _, where in ipairs({ backpack, char }) do
+			local t = where:FindFirstChild(W.ToolName)
+			if t then t:Destroy() end
+		end
+		local h = char:FindFirstChild(W.HolsterName)
+		if h then h:Destroy() end
+	end
+end
+
+local giveToken = setmetatable({}, { __mode = "k" }) -- newest give() per player wins
+
 -- each player gets their own build (the combo state lives in its connections)
 local function give(player)
+	local token = (giveToken[player] or 0) + 1
+	giveToken[player] = token
 	local backpack = player:FindFirstChildOfClass("Backpack") or player:WaitForChild("Backpack", 10)
 	local char = player.Character
-	if not backpack or not char then return end
-	if backpack:FindFirstChild(N.ToolName) or char:FindFirstChild(N.ToolName) then return end
-	local stickT = findMesh()
-	if not stickT then warn("[GoldenWeapons] nunchuck mesh not found, using plain sticks") end
-	local tool = buildTool(stickT)
-	local holster = buildHolster(char, stickT)
+	if not backpack or not char or giveToken[player] ~= token then return end
+	local kind = GoldenWeapons.ByElement[elementOf(player)]
+	local W = kind and GoldenWeapons.Weapons[kind]
+	if W and (backpack:FindFirstChild(W.ToolName) or char:FindFirstChild(W.ToolName)) then return end
+	clearWeapons(player, backpack, char)
+	if not W then return end
+
+	local tool, holster
+	if W == N then
+		local stickT = findMesh({ N.ModelName, N.MeshName })
+		if not stickT then warn("[GoldenWeapons] nunchuck mesh not found, using plain sticks") end
+		tool = buildNunchucks(stickT)
+		holster = buildNunchuckHolster(char, stickT)
+	else
+		local swordT = findMesh({ S.ModelName })
+		tool = buildSword(swordT)
+		holster = buildSwordHolster(char, swordT)
+	end
+	if giveToken[player] ~= token or player.Character ~= char then -- switched again while building
+		tool:Destroy()
+		if holster then holster:Destroy() end
+		return
+	end
 	tool.Equipped:Connect(function()
-		-- hide them off your back right when the draw animation grabs them
-		task.delay(N.Draw.time * N.Draw.grabAt, function()
+		-- hide it off your back right when the draw animation grabs it
+		task.delay(W.Draw.time * W.Draw.grabAt, function()
 			if tool.Parent == char then
 				showHolster(holster, false)
 				-- whoosh as they come off your back
@@ -424,12 +661,15 @@ local function give(player)
 	tool.Parent = backpack
 end
 
-Players.PlayerAdded:Connect(function(player)
+local function onPlayer(player)
 	player.CharacterAdded:Connect(function() task.wait(0.2) give(player) end)
-end)
+	-- switching element (E) swaps the weapon
+	player:GetAttributeChangedSignal("SpinjitzuElement"):Connect(function() give(player) end)
+end
+Players.PlayerAdded:Connect(onPlayer)
 for _, player in ipairs(Players:GetPlayers()) do
 	if player.Character then task.spawn(give, player) end
-	player.CharacterAdded:Connect(function() task.wait(0.2) give(player) end)
+	onPlayer(player)
 end
 
 ----------------------------------------------------------------------------------------
