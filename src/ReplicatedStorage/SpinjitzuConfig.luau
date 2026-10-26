@@ -1,4 +1,4 @@
--- SpinjitzuConfig v15.5  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuConfig v15.6  (ModuleScript in ReplicatedStorage)
 
 local Config = {}
 
@@ -10,15 +10,12 @@ Config.Presets = {
 	-- Sparks = "sparkle" | "embers" | "droplets" | "electric" | "dust" | "snow"
 	-- Base = "fire" | "water" | "lightning" | "earth" | "ice"   (element extras)
 	-- Glow / Band / LightBrightness optionally override the defaults below
-	-- DragonPlate / DragonEdge / DragonWing optionally set the dragon's colours (plates, glowing
-	-- seams + bones, wings); DragonMembrane / DragonBone / DragonHead / DragonGlow / DragonFlame
-	-- are for the older part-built dragon
+	-- DragonPlate / DragonEdge / DragonWing optionally set the dragon's colours (blocks, glowing
+	-- edges + bones, wings); DragonFlame = its cloud
 	Energy = {
 		Color = Color3.fromRGB(35, 235, 10), Highlight = Color3.fromRGB(215, 245, 35),
 		Sounds = { Start = "78556963713691", Loop = "89882806971818", End = "99341603228804" },
 		Sparks = "sparkle",
-		DragonMembrane = Color3.fromRGB(255, 245, 45), DragonBone = Color3.fromRGB(185, 225, 20),
-		DragonHead = Color3.fromRGB(160, 255, 40), DragonGlow = Color3.fromRGB(110, 255, 220),
 		DragonFlame = ColorSequence.new({
 			ColorSequenceKeypoint.new(0, Color3.fromRGB(245, 255, 130)),
 			ColorSequenceKeypoint.new(0.45, Color3.fromRGB(90, 255, 90)),
@@ -29,7 +26,6 @@ Config.Presets = {
 		Color = Color3.fromRGB(255, 85, 10), Highlight = Color3.fromRGB(255, 200, 45), Deep = Color3.fromRGB(195, 20, 0),
 		Sounds = { Start = "76928178554365", Loop = "71894695368576", End = "90408709963452" },
 		Sparks = "embers", Base = "fire", Glow = 0.6, Band = 0.8, LightBrightness = 6,
-		DragonMembrane = Color3.fromRGB(255, 205, 40), DragonBone = Color3.fromRGB(255, 120, 20),
 		DragonEdge = Color3.fromRGB(255, 215, 90),
 	},
 	Water = {
@@ -101,8 +97,6 @@ Config.DragonDownKey = Enum.KeyCode.LeftControl
 Config.DragonScale = 1
 Config.DragonWingScale = 1      -- wing size on top of DragonScale
 Config.DragonHeadScale = 1.0    -- head size on top of DragonScale
-Config.DragonHeadStyle = "flame" -- older dragon only: "flame" or "plated" head
-Config.DragonMeshHead = true    -- the plated mesh dragon (built in code, DragonModel); false = the older part dragon
 Config.DragonFlapSpeed = 6      -- wing beat speed while flying
 Config.DragonBot = true         -- a bot that demos the dragon on a loop
 
