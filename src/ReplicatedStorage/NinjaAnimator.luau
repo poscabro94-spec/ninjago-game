@@ -1,9 +1,10 @@
--- NinjaAnimator v1.6  (ModuleScript in ReplicatedStorage)
+-- NinjaAnimator v1.7  (ModuleScript in ReplicatedStorage)
 -- Procedural player animations, no animation assets: idle, walk, run, jump, fall, landing,
 -- plus the parkour moves (vault, mantle, wall run). Every client animates every player, so
 -- everyone sees the same thing. SpinjitzuClient calls NinjaAnimator.Step() in Stepped
 -- BEFORE the Spinjitzu / dragon poses, so those still play on top.
 -- Bots tagged "AnimatedNPC" (e.g. the Lightning power demo bot) are animated the same way.
+-- Time-locked characters (TimeStopped attribute, Time Blades) freeze mid-pose.
 
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
@@ -216,7 +217,9 @@ function Animator.Step(dt)
 				st = { joints = collectJoints(character), t = 0, ph = 0, air = 0, land = 0, wasAir = false, move = nil, moveT = 0, rb = 0 }
 				states[character] = st
 			end
-			if paused(character) then
+			if character:GetAttribute("TimeStopped") then
+				-- time-locked: frozen mid-pose, the joints stay as they are
+			elseif paused(character) then
 				if not st.paused then reset(st) st.paused = true end
 			else
 				st.paused = false

@@ -6,10 +6,10 @@ All the scripts from `Place1.rbxl`, laid out for [Rojo](https://rojo.space) so t
 
 | Folder | Goes into | What's in it |
 |---|---|---|
-| `src/ServerScriptService` | ServerScriptService | Spinjitzu server + bots + Tornado of Creation, parkour course, Golden Weapons server (tools, hits), elemental powers server, menu server (looks, bots, dummies), shared HitEffects / StatusEffects (burn, shock, freeze) / TrainingDummy / SpinjitzuBots modules |
+| `src/ServerScriptService` | ServerScriptService | Spinjitzu server + bots + Tornado of Creation, parkour course, Golden Weapons server (tools, hits), elemental powers server, menu server (looks, bots, dummies), Time Blades server (time powers), shared HitEffects / StatusEffects (burn, shock, freeze) / TimeEffects (time lock) / TrainingDummy / SpinjitzuBots modules |
 | `src/ReplicatedStorage` | ReplicatedStorage | Spinjitzu config / effect / elements / dragon, dragon mesh builder, NinjaAnimator (procedural player animations), GoldenWeapons (weapon settings, moves, two-handed arm IK), NinjaRoster (the characters in the menu), ElementPowers (power settings + arm poses) |
 | `src/StarterPlayer/StarterPlayerScripts` | StarterPlayerScripts | Spinjitzu client (effects, flight, particle budget), parkour controls, Golden Weapons client (shuriken aiming), the menu (MENU button / M), elemental power controls + beam visuals |
-| `assets/` | (import by hand) | `NunchuckGold.obj`: import with Studio's 3D Importer and put the model in ReplicatedStorage as `NunchuckGold` |
+| `assets/` | (import by hand) | `NunchuckGold.obj`: import with Studio's 3D Importer and put the model in ReplicatedStorage as `NunchuckGold`. `TimeBlade.obj` the same way, as `TimeBlade` (all Time Blades use it, each glows in its own colour) |
 | (your models) | (import by hand) | Golden Weapons: import with the 3D Importer and put them in ReplicatedStorage as `SwordOfFire`, `ScytheOfQuakes` and `ShurikensOfIce` (one shuriken). Until then placeholders made of blocks are used. The biggest part is the weapon; extra parts inside the model (e.g. red eye dots) keep their colour. Held by the wrong end: `FlipModel = true`; edge/blade facing backwards: `FlipEdge = true` (in `GoldenWeapons`) |
 
 File endings: `.server.luau` = Script, `.client.luau` = LocalScript, `.luau` = ModuleScript.

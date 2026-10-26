@@ -1,4 +1,4 @@
--- GoldenWeaponsServer v7.3  (Script in ServerScriptService)
+-- GoldenWeaponsServer v7.4  (Script in ServerScriptService)
 -- Gives every player the Golden Weapon of their element on spawn (slot 1) and swaps it when
 -- they switch element: Lightning = Nunchucks of Lightning, Fire = Sword of Fire,
 -- Earth = Scythe of Quakes, Ice = Shurikens of Ice. The menu can hand out several at once (player
@@ -20,6 +20,7 @@ local GoldenWeapons = require(ReplicatedStorage:WaitForChild("GoldenWeapons"))
 local HitEffects = require(script.Parent:WaitForChild("HitEffects"))
 local TrainingDummy = require(script.Parent:WaitForChild("TrainingDummy"))
 local Status = require(script.Parent:WaitForChild("StatusEffects"))
+local TimeEffects = require(script.Parent:WaitForChild("TimeEffects"))
 local Config = require(ReplicatedStorage:WaitForChild("SpinjitzuConfig"))
 local N = GoldenWeapons.Nunchucks
 local S = GoldenWeapons.Sword
@@ -188,6 +189,7 @@ local function hitArea(W, character, swing, center, range, from)
 				tRoot.AssemblyLinearVelocity = away * swing.knock + Vector3.new(0, swing.up or 8, 0)
 			end
 			hitFx(W, tRoot, model, swing.damage, swing.final)
+			if swing.timeLock then TimeEffects.lock(model, swing.timeLock, W.EnergyColor or W.HitColor) end
 		end
 	end
 end
@@ -567,6 +569,42 @@ local function buildMelee(W, template)
 	joint.C0, joint.C1 = GoldenWeapons.DefaultHold, C1
 	joint.Parent = weapon
 
+	if W.Crystal then
+		-- Time Blades: the crystals glow in the blade's colour (placed in the mesh's own space)
+		local size = weapon.Size
+		local crystal = Instance.new("Part")
+		crystal.Name = "Crystal"
+		crystal.Material = Enum.Material.Neon
+		crystal.Color = W.EnergyColor
+		crystal.Transparency = 0.15
+		crystal.Size = size * W.Crystal.size
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.Sphere
+		mesh.Parent = crystal
+		bare(crystal)
+		crystal.CFrame = weapon.CFrame * CFrame.new(size * W.Crystal.offset)
+		local w = Instance.new("WeldConstraint")
+		w.Part0, w.Part1 = weapon, crystal
+		w.Parent = crystal
+		crystal.Parent = weapon
+		local glow = Instance.new("PointLight")
+		glow.Color, glow.Brightness, glow.Range = W.EnergyColor, 2, 7
+		glow.Parent = crystal
+		local motes = Instance.new("ParticleEmitter")
+		motes.Name = "Flames" -- (more of them while swinging, like the Sword of Fire's flames)
+		motes.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+		motes.Color = ColorSequence.new(W.EnergyColor, Color3.new(1, 1, 1))
+		motes.LightEmission = 1
+		motes.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.25), NumberSequenceKeypoint.new(1, 0) })
+		motes.Lifetime = NumberRange.new(0.3, 0.6)
+		motes.Speed = NumberRange.new(0.5, 1.5)
+		motes.SpreadAngle = Vector2.new(180, 180)
+		motes.Rate = 8
+		motes.Parent = crystal
+		tool:SetAttribute("TimePower", W.TimePower)
+		tool.ToolTip = "Click to swing, F: " .. W.TimePower
+	end
+
 	local a0 = att(weapon, "TrailA", trailA, R)
 	local a1 = att(weapon, "TrailB", trailB, R)
 	goldTrail(weapon, a0, a1).Color = ColorSequence.new(W.TrailColor, W.TrailColor2)
@@ -707,9 +745,13 @@ local function launchShuriken(character, origin, dir, template, swing)
 		shatter(at)
 		p:Destroy()
 	end
-	conn = RunService.Heartbeat:Connect(function()
+	conn = RunService.Heartbeat:Connect(function(dt)
 		if not p.Parent then
 			conn:Disconnect()
+			return
+		end
+		if p:GetAttribute("TimeStopped") then -- hanging in stopped time (Pause Time Blade)
+			born += dt
 			return
 		end
 		local now = p.Position

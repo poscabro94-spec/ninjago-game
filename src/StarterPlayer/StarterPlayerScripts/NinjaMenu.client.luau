@@ -1,4 +1,4 @@
--- NinjaMenu v1.3  (LocalScript in StarterPlayerScripts)
+-- NinjaMenu v1.4  (LocalScript in StarterPlayerScripts)
 -- The MENU button (bottom left, or M) opens a panel: pick your character (NinjaRoster), switch
 -- Golden Weapons on and off (several at once), spawn the Tornado of Creation crew as bots and
 -- training dummies (normal / infinite HP), and Duels: two NPCs clashing beams (you pick who
@@ -34,7 +34,8 @@ local ELEMENT_COLORS = {
 	Fire = Color3.fromRGB(255, 120, 40), Earth = Color3.fromRGB(205, 150, 80), Lightning = Color3.fromRGB(90, 190, 255),
 	Ice = Color3.fromRGB(190, 235, 255), Energy = Color3.fromRGB(110, 230, 90), Water = Color3.fromRGB(60, 200, 220),
 }
-local WEAPON_ORDER = { "Sword", "Scythe", "Nunchucks", "Shurikens" }
+local WEAPON_ORDER = { "Sword", "Scythe", "Nunchucks", "Shurikens", "PauseBlade" }
+local GOLDEN = { "Sword", "Scythe", "Nunchucks", "Shurikens" } -- what "All" gives
 local OWNER = {} -- weapon kind -> element that owns it
 for element, kind in pairs(GoldenWeapons.ByElement) do OWNER[kind] = element end
 
@@ -463,7 +464,10 @@ local function refresh()
 	local weapons, count = currentWeapons()
 	for name, setSelected in pairs(characterCards) do setSelected(name == ninja) end
 	for kind, setSelected in pairs(weaponCards) do
-		if kind == "All" then setSelected(count == #WEAPON_ORDER)
+		if kind == "All" then
+			local all = true
+			for _, k in ipairs(GOLDEN) do all = all and weapons[k] == true end
+			setSelected(all)
 		elseif kind == "None" then setSelected(count == 0)
 		else setSelected(weapons[kind] == true) end
 	end
@@ -502,15 +506,15 @@ local function buildCards()
 	for i, kind in ipairs(WEAPON_ORDER) do
 		local W = GoldenWeapons.Weapons[kind]
 		local owner = OWNER[kind]
-		button, viewport, setSelected = card(i, W.ToolName:match("^%S+"), owner and (owner .. " ninja"),
-			owner and ELEMENT_COLORS[owner])
+		button, viewport, setSelected = card(i, W.ToolName:match("^%S+"), owner and (owner .. " ninja") or "time blade",
+			owner and ELEMENT_COLORS[owner] or W.EnergyColor)
 		showWeapon(viewport, kind)
 		weaponCards[kind] = setSelected
 		button.Activated:Connect(function() remote:FireServer("weapon", kind) end)
 		button.Parent = weaponGrid
 	end
 	local disc
-	button, viewport, setSelected, disc = card(#WEAPON_ORDER + 1, "All", "every weapon")
+	button, viewport, setSelected, disc = card(#WEAPON_ORDER + 1, "All", "golden weapons")
 	local icon = bladesIcon()
 	icon.AnchorPoint, icon.Position, icon.ZIndex = Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, 0.5), 4
 	for _, d in ipairs(icon:GetDescendants()) do

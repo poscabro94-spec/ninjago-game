@@ -466,9 +466,13 @@ local function launchShot(P, character, origin, dir, ball)
 		task.delay(0.1, function() l.Enabled = false end)
 		playSound(spot, P.Sounds.Zap or P.Sounds.Hit[1], 0.6, 1 + math.random() * 0.4)
 	end
-	conn = RunService.Heartbeat:Connect(function()
+	conn = RunService.Heartbeat:Connect(function(dt)
 		if not p.Parent then
 			conn:Disconnect()
+			return
+		end
+		if p:GetAttribute("TimeStopped") then -- hanging in stopped time (Pause Time Blade)
+			born += dt
 			return
 		end
 		local now = p.Position

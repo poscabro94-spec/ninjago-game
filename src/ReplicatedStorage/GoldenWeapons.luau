@@ -1,4 +1,4 @@
--- GoldenWeapons v6.2  (ModuleScript in ReplicatedStorage)
+-- GoldenWeapons v7.0  (ModuleScript in ReplicatedStorage)
 -- Shared settings + the client side of the Golden Weapons. Each element has its own weapon
 -- (ByElement); switching element (E) swaps it.
 -- Nunchucks of Lightning (moves copied from the reference video):
@@ -16,6 +16,9 @@
 --   Scythe combo: reap -> reap back -> spin -> slam (quake: shockwave + rocks around the impact)
 -- Shurikens of Ice: one in each hand, click throws them where you aim (alternating hands,
 --   4th throw = both). A hit freezes the target. The server does the flying + hits.
+-- Time Blades (not tied to an element; picked in the menu): one-handed, the crystals glow in the
+--   blade's colour. Click = swipe -> back-swipe -> thrust (the thrust time-locks them);
+--   F = the blade's time power (TimeBladesServer). So far: the Pause Time Blade (red).
 -- Weapons without an imported model are placeholders built from blocks.
 
 local Players = game:GetService("Players")
@@ -198,7 +201,56 @@ local K = GoldenWeapons.Shurikens
 -- in the hand: shuriken flat side out to the side, just below the fist (shuriken space: Y = flat side)
 GoldenWeapons.ShurikenHold = CFrame.new(0, -0.45, -0.1) * CFrame.Angles(0, 0, math.pi / 2)
 
-GoldenWeapons.Weapons = { Nunchucks = N, Sword = S, Scythe = SC, Shurikens = K }
+-- the Time Blades share one model ("TimeBlade", assets/TimeBlade.obj) and differ in colour + power
+local function timeBlade(name, color, power)
+	return {
+		ToolName = name,
+		HolsterName = "TimeBladeHolster",
+		ModelName = "TimeBlade",
+		Length = 2.6,
+		FlipModel = false,
+		FlipEdge = false,
+		GripFromEnd = 0.35,           -- the handle at the bottom (low, so the end doesn't poke into you)
+		LeftGap = 0.4,
+		HiltLength = 0.9,
+		BackGrip = Vector3.new(1.05, -1.0, 0.35), -- on your right hip
+		BackAngle = math.pi - 0.25,
+		-- glowing crystals, as a part of the model's size (x, y, z) from its centre
+		Crystal = { offset = Vector3.new(0, 0.08, -0.22), size = Vector3.new(0.55, 0.27, 0.5) },
+		-- placeholder blade
+		BladeLength = 1.7, BladeWidth = 0.5, BladeThickness = 0.12, GripLength = 0.7,
+		GripColor = Color3.fromRGB(60, 40, 30),
+		CoreColor = color,
+		Color = Color3.fromRGB(235, 178, 25),
+		Material = Enum.Material.Metal,
+		Reflectance = 0.12,
+		EnergyColor = color,
+		TrailColor = color:Lerp(Color3.new(1, 1, 1), 0.4),
+		TrailColor2 = color,
+		HitColor = color,
+		HitTextColor = color:Lerp(Color3.new(1, 1, 1), 0.5),
+		TimePower = power,
+		ComboWindow = 1.2,
+		Swings = {
+			{ name = "swipe",     time = 0.4,  damage = 10, hitAt = 0.55, range = 5.5, knock = 16 },
+			{ name = "backswipe", time = 0.4,  damage = 10, hitAt = 0.5,  range = 5.5, knock = 16 },
+			{ name = "thrust",    time = 0.5,  damage = 14, hitAt = 0.55, range = 5.5, reach = 4, knock = 10, final = true, timeLock = 1.5 },
+		},
+		Draw = { name = "draw", time = 0.7, grabAt = 0.4 },
+		Sounds = {
+			Swing = { "rbxassetid://9114276859", "rbxassetid://9114276862" },
+			Hit = { "rbxassetid://115899453415449", "rbxassetid://77794845234498" },
+			Final = "rbxassetid://73278613369675",
+		},
+	}
+end
+
+-- Pause: F stops time in a dome in front of you (everyone inside frozen, shots hang in the air)
+GoldenWeapons.PauseBlade = timeBlade("Pause Time Blade", Color3.fromRGB(255, 40, 40), "Pause")
+GoldenWeapons.PauseBlade.Pause = { Radius = 14, Time = 4, Cooldown = 12, Reach = 10 }
+local PB = GoldenWeapons.PauseBlade
+
+GoldenWeapons.Weapons = { Nunchucks = N, Sword = S, Scythe = SC, Shurikens = K, PauseBlade = PB }
 -- element -> weapon (elements not listed get none)
 GoldenWeapons.ByElement = { Lightning = "Nunchucks", Fire = "Sword", Earth = "Scythe", Ice = "Shurikens" }
 local TAU = math.pi * 2
@@ -382,6 +434,25 @@ SC.Moves = {
 local function blendKey(a, b, s)
 	return { cf = a.cf:Lerp(b.cf, s), waist = a.waist:Lerp(b.waist, s), left = lerp(a.left, b.left, s) }
 end
+
+-- Time Blades: one hand, the blade up in front of the right shoulder
+PB.Idle = wkey(0, V(1.35, -0.55, -0.75), V(0.25, 0.9, -0.3), V(0, 0, -1), nil, 0)
+PB.Moves = {
+	swipe = { -- low on the right, then up across to high on the left
+		wkey(0.3, V(1.25, -0.7, -0.8), V(0.3, -0.7, -0.65), V(-0.6, 0.7, 0), R(0, -0.4, 0), 0),
+		wkey(0.6, V(0, 0, -1.1), V(-0.3, 0.6, -0.75), V(-1, 0.8, 0), R(0, 0.2, 0), 0),
+		wkey(1, V(-0.3, 0.8, -0.85), V(-0.6, 0.7, 0.3), V(-0.6, 0.6, 0.4), R(0, 0.5, 0), 0),
+	},
+	backswipe = { -- and back across to the right
+		wkey(0.5, V(0.45, -0.4, -1.1), V(0.6, 0.4, -0.7), V(1, 0.6, 0), R(0, -0.1, 0), 0),
+		wkey(1, V(1.35, -0.55, -0.75), V(0.25, 0.9, -0.3), V(0, 0, -1), nil, 0),
+	},
+	thrust = { -- pull back by the hip, then stab straight forward
+		wkey(0.35, V(1.3, -0.5, -0.7), V(0.1, 0.25, -1), V(0, 1, 0), R(0, -0.3, 0), 0),
+		wkey(0.6, V(0.35, -0.25, -1.55), V(-0.05, 0.1, -1), V(0, 1, 0), R(0, 0.15, 0), 0),
+		wkey(1, V(0.35, -0.25, -1.5), V(-0.05, 0.1, -1), V(0, 1, 0), R(0, 0.1, 0), 0),
+	},
+}
 
 local function weaponKey(W, kind, e, from)
 	local prevE, prev = 0, from
@@ -736,6 +807,7 @@ function GoldenWeapons.Step(character, root, pose, dt, armsFree)
 	if not tool then return pose end
 	if tool.Name == S.ToolName then return meleeStep(S, tool, character, pose, dt, armsFree) end
 	if tool.Name == SC.ToolName then return meleeStep(SC, tool, character, pose, dt, armsFree) end
+	if tool.Name == PB.ToolName then return meleeStep(PB, tool, character, pose, dt, armsFree) end
 	if tool.Name == K.ToolName then return shurikenStep(tool, pose, dt, armsFree) end
 	if tool.Name ~= N.ToolName then return pose end
 	local handle = tool:FindFirstChild("Handle")
