@@ -1,6 +1,6 @@
--- SpinjitzuClient v10.1  (LocalScript in StarterPlayer > StarterPlayerScripts)
+-- SpinjitzuClient v10.2  (LocalScript in StarterPlayer > StarterPlayerScripts)
 -- Q toggles Spinjitzu, E switches element, R does the Dragon (spin -> rise -> free flight).
--- While flying: WASD moves where the camera looks, Space up, Ctrl down.
+-- While flying: WASD moves where the camera looks, Space up, Ctrl down, hold Shift to go faster.
 -- Renders the tornado / dragon for every player (and NPCs tagged "SpinjitzuNPC"),
 -- drives the character spin, limb poses, and your own dragon flight.
 
@@ -98,6 +98,8 @@ local function flightStop()
 	for _, inst in ipairs({ flight.lv, flight.ao, flight.att }) do
 		if inst then inst:Destroy() end
 	end
+	local cam = workspace.CurrentCamera
+	if cam and flight.fov then cam.FieldOfView = flight.fov end
 	if flight.humanoid.Parent then
 		flight.humanoid.PlatformStand = false
 		flight.humanoid.AutoRotate = true
@@ -174,6 +176,7 @@ local function flightStart(character)
 	flight = {
 		character = character, root = root, humanoid = humanoid, att = att, lv = lv, ao = ao,
 		heading = heading, vel = Vector3.zero, riseT = 0, flyT = 0, startY = root.Position.Y,
+		fov = workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView, boost = 0,
 	}
 	ao.CFrame = CFrame.lookAt(Vector3.zero, heading)
 end
@@ -201,6 +204,10 @@ local function flightUpdate(dt)
 	elseif phase == "fly" then
 		flight.flyT += dt
 		local speed = Config.DragonFlySpeed or 50
+		-- Shift: boost (the camera widens a little so it feels fast)
+		local boosting = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+		flight.boost += ((boosting and 1 or 0) - flight.boost) * (1 - math.exp(-dt * 5))
+		local fast = speed * (1 + ((Config.DragonBoost or 1.9) - 1) * flight.boost)
 		local camCF = workspace.CurrentCamera.CFrame
 		local camLook = camCF.LookVector
 		local fwdFlat = flatUnit(camLook, flight.heading)
@@ -211,7 +218,12 @@ local function flightUpdate(dt)
 		local mv, vert = readMove()
 		local dir = rightFlat * mv.X + fwd3 * (-mv.Z) + Vector3.yAxis * vert
 		if dir.Magnitude > 1 then dir = dir.Unit end
-		flight.vel = flight.vel:Lerp(dir * speed, 1 - math.exp(-dt * 3))
+		flight.vel = flight.vel:Lerp(dir * fast, 1 - math.exp(-dt * 3))
+		local cam = workspace.CurrentCamera
+		if cam and flight.fov then
+			local moving = math.clamp((flight.vel.Magnitude - speed) / (fast - speed + 1), 0, 1)
+			cam.FieldOfView = flight.fov + 14 * flight.boost * moving
+		end
 		local vel = flight.vel
 		-- gentle bob while hovering in place
 		vel += Vector3.new(0, math.sin(flight.flyT * 2) * 0.8 * (1 - math.clamp(vel.Magnitude / 8, 0, 1)), 0)

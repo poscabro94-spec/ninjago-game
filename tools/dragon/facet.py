@@ -184,6 +184,9 @@ def body_ring(y, w, d):
 
 
 TAIL_FROM = 7   # rings from this one down are the tail: separate segments that swing
+NECK_FROM = 3   # rings above this one are the neck: segments that bend so the head can look round
+NECK_SKIRT = 0.45   # each neck segment carries on this far down inside the one below (no gaps when bent)
+NECK_BEND = [0.2, 0.22, 0.24, 0.34]   # how much of a turn each neck joint + the head take
 
 
 def _loft_rings(p, rings, tip=None, top=None):
@@ -210,9 +213,66 @@ def spine(i):
 def build_body():
     """the neck + body (one piece, root space); the tail is build_tail()"""
     p = Piece()
-    rings = [body_ring(*r) for r in BODY_RINGS[:TAIL_FROM + 1]]
-    _loft_rings(p, rings, top=V(0, BODY_RINGS[0][0] + 0.05, BODY_FRONT + 0.6))
+    rings = [body_ring(*r) for r in BODY_RINGS[NECK_FROM:TAIL_FROM + 1]]
+    y = BODY_RINGS[NECK_FROM][0]
+    _loft_rings(p, rings, top=V(0, y + 0.05, spine(NECK_FROM)[2]))
     return p
+
+
+def build_neck():
+    """(joints, segments) like build_tail but going up: joint 1 sits on the body, segment i's
+    triangles are relative to joint i, the last joint is where the head sits. Each segment has a
+    skirt reaching down inside the one below so bending never opens a gap."""
+    joints, segs = [], []
+    for i in range(NECK_FROM, 0, -1):
+        j = spine(i)
+        joints.append(j)
+        y, w, d = BODY_RINGS[i]
+        skirt = body_ring(y - NECK_SKIRT, w * 0.96, d * 0.96)
+        rings = [[q - j for q in r] for r in (skirt, body_ring(*BODY_RINGS[i]), body_ring(*BODY_RINGS[i - 1]))]
+        s = Piece()
+        top = V(0, BODY_RINGS[0][0] + 0.05, BODY_FRONT + 0.6) - j if i == 1 else None
+        _loft_rings(s, rings, top=None)
+        if top is not None:
+            n = len(rings[-1])
+            for k in range(n):
+                s.tri(rings[-1][k], rings[-1][(k + 1) % n], top)
+        segs.append(s)
+    joints.append(NECK_TOP)
+    return joints, segs
+
+
+def bend(look):
+    """the neck turned so the head points along `look` (root space; None = straight up): a list
+    of (rotation matrix, position) for each joint, the last one the head's"""
+    joints, _ = build_neck()
+    R_all, theta = np.eye(3), 0.0
+    axis = None
+    if look is not None:
+        u = np.array(look, float) / np.linalg.norm(look)
+        c = np.cross([0, 1, 0], u)
+        if np.linalg.norm(c) > 1e-6:
+            axis = c / np.linalg.norm(c)
+            theta = min(math.acos(max(-1, min(1, u[1]))), MAX_BEND)
+    out, acc, pos = [], 0.0, joints[0]
+    for i, wgt in enumerate(NECK_BEND):
+        acc += wgt * theta
+        R = axis_angle(axis, acc) if axis is not None else np.eye(3)
+        if i > 0:
+            pos = pos + out[-1][0] @ (joints[i] - joints[i - 1])
+        out.append((R, pos))
+    return out
+
+
+MAX_BEND = 2.3
+
+
+def axis_angle(a, t):
+    x, y, z = a
+    c, s, C = math.cos(t), math.sin(t), 1 - math.cos(t)
+    return np.array([[c + x * x * C, x * y * C - z * s, x * z * C + y * s],
+                     [y * x * C + z * s, c + y * y * C, y * z * C - x * s],
+                     [z * x * C - y * s, z * y * C + x * s, c + z * z * C]])
 
 
 def build_tail():
@@ -329,21 +389,27 @@ def ang(x, y, z): return (Rx(x) @ Ry(y) @ Rz(z), np.zeros(3))
 
 HEAD_SCALE = 1.15
 HEAD_PITCH = math.pi / 2   # snout straight up the column
+MOUTH = V(0, -0.6, -1.7)   # where powers come out: back in the throat (head space)
 
 
 def mouth():
     """the middle of the open mouth in root space (head at rest)"""
     R = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]]) * HEAD_SCALE   # Angles(pi/2, 0, 0)
-    return R @ V(0, -0.6, -1.7) + NECK_TOP   # back in the throat
+    return R @ MOUTH + NECK_TOP
 
 
-def placed(flap=0.0):
+def placed(flap=0.0, look=None):
     """(piece, cf in root space) exactly like SpinjitzuDragon places them"""
     out = [(build_body(), T([0, 0, 0]))]
     joints, segs = build_tail()
     for j, s in zip(joints, segs):
         out.append((s, T(j)))
-    out.append((build_head(), mul(T(NECK_TOP), ang(HEAD_PITCH, 0, 0), (np.eye(3) * HEAD_SCALE, np.zeros(3)))))
+    chain = bend(look)
+    _, nsegs = build_neck()
+    for (R, pos), s in zip(chain, nsegs):
+        out.append((s, (R, pos)))
+    R, pos = chain[-1]
+    out.append((build_head(), mul((R, pos), ang(HEAD_PITCH, 0, 0), (np.eye(3) * HEAD_SCALE, np.zeros(3)))))
     w = build_wing()
     for side in (1, -1):
         hinge = mul(T([side * HINGE[0], HINGE[1], HINGE[2]]), ang(0, -side * HINGE_YAW, 0), ang(0, 0, side * (WING_RAISE + flap)))
@@ -359,10 +425,10 @@ if __name__ == "__main__":
     from PIL import Image
     out = sys.argv[1]
 
-    def render(root, views, center, span=17):
+    def render(root, views, center, span=17, look=None):
         sc = Scene()
         sc.mesh(character(), root, (70, 80, 70), (0, 0, 0))
-        for piece, cf in placed(0.05):
+        for piece, cf in placed(0.05, look):
             m, hot, glow = to_mesh(piece, G, tube)
             w = mul(root, cf)
             sc.mesh(m, w, (45, 60, 240), (0, 0, 0))
@@ -383,4 +449,8 @@ if __name__ == "__main__":
     fly = (Rx(-math.radians(75)), np.zeros(3))
     b = render(fly, [rot(0.0, -0.7)], (0, 1.0, -3.0), span=19)
     Image.fromarray(np.concatenate(a + b, 1)).save(os.path.join(out, "facet.png"))
+    # looking (beaming) forward + down, and off to the side
+    c = render(hover, [rot(-math.pi / 2, -0.05), rot(math.pi * 0.8, -0.3)], (0, 1.5, 0), span=19, look=(0, -0.5, -1))
+    d = render(hover, [rot(math.pi, -0.15), rot(0.4, -0.4)], (0, 1.5, 0), span=19, look=(1, 0.3, -1))
+    Image.fromarray(np.concatenate(c + d, 1)).save(os.path.join(out, "bend.png"))
     print("ok")

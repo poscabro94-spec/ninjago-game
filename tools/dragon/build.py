@@ -41,11 +41,13 @@ DRIPS = ["Wx", "Tb", "P1", "P"]
 def main():
     joints, segs = F.build_tail()
     tail = "".join(piece("[%d]" % (i + 1), s).replace("\t[%d] = {" % (i + 1), "\t\t{") for i, s in enumerate(segs))
+    njoints, nsegs = F.build_neck()
+    neck = "".join(piece("[%d]" % (i + 1), s).replace("\t[%d] = {" % (i + 1), "\t\t{") for i, s in enumerate(nsegs))
     W = F.WP
     for k in DRIPS:
         assert k in W, "wing point %s doesn't exist" % k
     pts = "\n".join("\t\t%s = %s," % (k, vec(v)) for k, v in W.items())
-    src = f'''-- DragonModel v4.0  (ModuleScript in ReplicatedStorage) -- GENERATED, don't edit by hand:
+    src = f'''-- DragonModel v4.1  (ModuleScript in ReplicatedStorage) -- GENERATED, don't edit by hand:
 -- change tools/dragon/facet.py and run build.py (python facet.py out renders it).
 -- The Rising Dragon, built from plain parts by SpinjitzuDragon: flat see-through glowing facets
 -- with thick bright outlines, one tall column behind you. Studs at DragonScale 1.
@@ -60,11 +62,19 @@ return {{
 	TailJoints = {{ {", ".join(vec(j) for j in joints)} }},
 	Tail = {{
 {tail}	}},
+	-- the neck: segments going up from the body that bend so the head can look round (see
+	-- DragonNeck); joint i = where segment i sits, the last joint is where the head sits
+	NeckJoints = {{ {", ".join(vec(j) for j in njoints)} }},
+	Neck = {{
+{neck}	}},
+	NeckBend = {{ {", ".join(n(w) for w in F.NECK_BEND)} }}, -- how much of a turn each joint + the head take
+	NeckMaxBend = {n(F.MAX_BEND)}, -- (radians)
 
 	NeckTop = {vec(F.NECK_TOP)}, -- where the head sits (root space)
 	HeadPitch = {n(F.HEAD_PITCH)}, -- snout turned up the column
 	HeadScale = {F.HEAD_SCALE},
 	Mouth = {vec(F.mouth())}, -- the middle of the open mouth (root space, head at rest): powers come out here
+	MouthLocal = {vec(F.MOUTH)}, -- the same in head space (unscaled)
 	TailTip = {vec(F.TAIL_TIP)},
 	Hinge = {vec(F.HINGE)}, -- right wing's hinge (root space)
 	HingeYaw = {F.HINGE_YAW}, -- wings swept back a little

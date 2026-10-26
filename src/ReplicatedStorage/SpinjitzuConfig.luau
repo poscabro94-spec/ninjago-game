@@ -1,4 +1,4 @@
--- SpinjitzuConfig v15.7  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuConfig v15.8  (ModuleScript in ReplicatedStorage)
 
 local Config = {}
 
@@ -96,6 +96,7 @@ Config.DragonSpinTime = 2       -- seconds of Spinjitzu before the dragon appear
 Config.DragonRiseTime = 3       -- seconds going straight up before you can move
 Config.DragonRiseHeight = 35    -- studs it rises in that time
 Config.DragonFlySpeed = 50      -- studs/s
+Config.DragonBoost = 1.9        -- holding Shift while flying: this many times faster
 Config.DragonUpKey = Enum.KeyCode.Space
 Config.DragonDownKey = Enum.KeyCode.LeftControl
 Config.DragonScale = 1

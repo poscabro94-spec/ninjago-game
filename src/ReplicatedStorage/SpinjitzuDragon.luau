@@ -1,4 +1,4 @@
--- SpinjitzuDragon v17.1  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuDragon v17.2  (ModuleScript in ReplicatedStorage)
 -- Elemental dragon that appears behind the character after Spinjitzu (Rising Dragon), built from
 -- plain parts like the show's energy dragons: solid-looking panels in the element colour with thin
 -- glowing outlines. One tall column behind you: a cap-shaped faceted head on top (V seams down
@@ -11,6 +11,9 @@
 
 local Config = require(script.Parent:WaitForChild("SpinjitzuConfig"))
 local Model = require(script.Parent:WaitForChild("DragonModel"))
+local DragonNeck = require(script.Parent:WaitForChild("DragonNeck"))
+local Powers = require(script.Parent:WaitForChild("ElementPowers"))
+local Players = game:GetService("Players")
 
 local Dragon = {}
 Dragon.__index = Dragon
@@ -440,6 +443,13 @@ function Dragon:_buildBody()
 	tip.Parent = self.tail[#self.tail].root
 	self:_flames(tip, sc)
 	self:_trail(tip, 0.5 * sc, 0.45)
+	-- the neck: segments that bend so the head can look where your power goes (see DragonNeck)
+	self.neck = {}
+	for i, seg in ipairs(M.Neck) do
+		self.neck[i] = self:_piece("Neck")
+		self:_facets(self.neck[i], seg, sc)
+	end
+	self.look = Vector3.yAxis
 	-- the head on top
 	self.head = self:_piece("Head")
 	self:_facets(self.head, M.Head, self.hs)
@@ -566,13 +576,30 @@ function Dragon:_buildBody()
 		SpreadAngle = Vector2.new(180, 180), Acceleration = Vector3.new(0, 3, 0), Drag = 1.5,
 	})
 	-- mist along the body
-	for _, y in ipairs({ 3.5, 1, -1.5, -4 }) do
+	for _, y in ipairs({ 1, -1.5, -4 }) do
 		local a = Instance.new("Attachment")
 		a.Position = Vector3.new(0, y, Model.NeckTop.Z) * sc
 		a.Parent = self.body
 		self:_mist(a, 1.2 * sc)
 		self:_flames(a, 1.3 * sc)
 	end
+	do -- (and up the neck)
+		local a = Instance.new("Attachment")
+		a.Parent = self.neck[2]
+		self:_mist(a, 1.2 * sc)
+		self:_flames(a, 1.3 * sc)
+	end
+	-- speed lines streaming off you when you boost (Shift)
+	-- (a box round you, turned each frame so its top faces backwards)
+	self.speedBox = newPart("Part", self.folder, { Name = "FxVolume", Size = Vector3.new(14, 6, 12) * sc })
+	self.speedLines = self:_emitter(self.speedBox, {
+		Texture = TEX_SPARK, Color = ColorSequence.new(WHITE, self.edgeCol), LightEmission = 1, Brightness = 3,
+		Orientation = Enum.ParticleOrientation.VelocityParallel,
+		Size = NumberSequence.new({ kp(0, 0.15 * sc), kp(1, 0.05 * sc) }), Squash = NumberSequence.new(6),
+		Transparency = NumberSequence.new({ kp(0, 0.3), kp(1, 1) }),
+		Lifetime = NumberRange.new(0.2, 0.35), Rate = 0, Speed = NumberRange.new(60),
+		EmissionDirection = Enum.NormalId.Top, SpreadAngle = Vector2.new(4, 4),
+	})
 	-- streaks raining down / spraying out below it
 	local below = Instance.new("Attachment")
 	below.Position = Vector3.new(0, -1.5 * sc, Model.NeckTop.Z * sc)
@@ -612,9 +639,16 @@ function Dragon:_placeBody(rootCF, flap, effort, beat, parts, cfs)
 		table.insert(cfs, cf)
 	end
 	put(self.body, rootCF)
-	-- head: up the column, bobbing a little
-	put(self.head, rootCF * CFrame.new(M.NeckTop * sc)
-		* CFrame.Angles(M.HeadPitch + math.sin(t * 2) * 0.05 + beat * 0.04 * effort, math.sin(t * 0.7) * 0.08, 0))
+	-- neck + head: up the column, bending round to look where your power goes, bobbing a little
+	local chain = DragonNeck.Bend(M, self.look)
+	for i, seg in ipairs(self.neck) do
+		put(seg, rootCF * CFrame.new(chain[i].pos * sc) * chain[i].rot)
+	end
+	local top = chain[#chain]
+	local headCF = rootCF * CFrame.new(top.pos * sc) * top.rot
+		* CFrame.Angles(M.HeadPitch + math.sin(t * 2) * 0.05 + beat * 0.04 * effort, math.sin(t * 0.7) * 0.08, 0)
+	put(self.head, headCF)
+	DragonNeck.Live[self.character] = headCF:PointToWorldSpace(M.MouthLocal * self.hs)
 	-- wings beat about the hinge at the shoulder
 	for side, wing in pairs(self.wings) do
 		local hinge = CFrame.new(side * M.Hinge.X * sc, M.Hinge.Y * sc, M.Hinge.Z * sc)
@@ -744,6 +778,7 @@ function Dragon:Destroy()
 	for _, j in pairs(self.motors) do
 		if j.last and j.motor.Parent and j.motor.Transform == j.last then j.motor.Transform = CFrame.identity end
 	end
+	if DragonNeck.Live[self.character] then DragonNeck.Live[self.character] = nil end
 	if self.folder then self.folder:Destroy() end
 	self.folder = nil
 end
@@ -801,7 +836,23 @@ function Dragon:Update(dt)
 	self.flapT += dt * lerp(2.2, Config.DragonFlapSpeed or 6, effort)
 	local beat = math.sin(self.flapT)
 	local flap = beat * lerp(0.1, 0.35, effort) + 0.05 - (1 - smoothstep(0, 1, a)) * 1.0
+	-- the head looks where your power goes (beaming), straight up otherwise
+	local character = self.character
+	local aim = character:GetAttribute("PowerBeam") and character:GetAttribute("PowerAim")
+	if Powers.LocalAim and character == Players.LocalPlayer.Character then aim = Powers.LocalAim end
+	local want = typeof(aim) == "Vector3" and DragonNeck.LookAt(Model, rootCF, sc, aim) or Vector3.yAxis
+	want = want.Magnitude > 1e-3 and want.Unit or Vector3.yAxis
+	local look = self.look:Lerp(want, 1 - math.exp(-dt * 12))
+	self.look = look.Magnitude > 0.05 and look.Unit or want
+	-- speed lines when you go faster than flying normally does (Shift)
+	local boost = math.clamp((speed - (Config.DragonFlySpeed or 50) * 1.1) / 20, 0, 1)
 	local parts, cfs = {}, {} -- moved together with one BulkMoveTo
+	self.speedLines.Rate = self.stopping and 0 or 120 * boost
+	if speed > 1 then
+		local p = rootCF:PointToWorldSpace(Vector3.new(0, 1, 1) * sc)
+		table.insert(parts, self.speedBox)
+		table.insert(cfs, CFrame.lookAt(p, p - self.vel) * CFrame.Angles(-math.pi / 2, 0, 0)) -- (top = backwards)
+	end
 	self:_placeBody(rootCF, flap, effort, beat, parts, cfs)
 	workspace:BulkMoveTo(parts, cfs, Enum.BulkMoveMode.FireCFrameChanged)
 	-- drips hang straight down (world down), stretching a little

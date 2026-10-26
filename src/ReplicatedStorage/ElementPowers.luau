@@ -1,4 +1,4 @@
--- ElementPowers v3.1  (ModuleScript in ReplicatedStorage)
+-- ElementPowers v3.2  (ModuleScript in ReplicatedStorage)
 -- Elemental powers, used with empty hands (no Golden Weapon out): all six elements.
 --   tap left click:    a shot from the right hand -> the left hand -> a big one from both hands
 --   hold left click:   both hands out, a beam from each meets in front of you and one big beam
@@ -293,25 +293,33 @@ function Powers.Step(character, root, pose, dt, armsFree)
 	return out
 end
 
--- Rising Dragon: while the dragon is out (rising / flying) your power comes out of its mouth.
--- The mouth's spot is in DragonModel (root space, head at rest); nil = not on the dragon
-local DragonModel -- (loaded the first time it's needed; false = missing)
+-- Rising Dragon: while the dragon is out (rising / flying) your power comes out of its mouth, and
+-- its head turns to look where the power goes (DragonNeck). nil = not on the dragon
+local DragonModel, DragonNeck -- (loaded the first time they're needed; false = missing)
 function Powers.DragonMouth(character)
 	local phase = character and character:GetAttribute("DragonPhase")
 	if phase ~= "rise" and phase ~= "fly" then return nil end
 	local root = character:FindFirstChild("HumanoidRootPart")
 	if not root then return nil end
 	if DragonModel == nil then
-		local m = script.Parent:FindFirstChild("DragonModel")
-		local ok, res = pcall(function() return m and require(m) end)
-		DragonModel = ok and res or false
+		local function load(name)
+			local m = script.Parent:FindFirstChild(name)
+			local ok, res = pcall(function() return m and require(m) end)
+			return ok and res or false
+		end
+		DragonModel, DragonNeck = load("DragonModel"), load("DragonNeck")
 	end
-	if not DragonModel then return nil end
+	if not DragonModel or not DragonNeck then return nil end
+	-- the dragon you can see (on a client) says exactly where its mouth is
+	local live = DragonNeck.Live[character]
+	if live then return live end
 	local config = script.Parent:FindFirstChild("SpinjitzuConfig")
 	local okC, Config = pcall(function() return require(config) end)
 	local okS, s = pcall(function() return character:GetScale() end)
 	local scale = (okS and s or 1) * (okC and Config.DragonScale or 1)
-	return root.CFrame:PointToWorldSpace(DragonModel.Mouth * scale)
+	local aim = character:GetAttribute("PowerBeam") and character:GetAttribute("PowerAim")
+	local look = typeof(aim) == "Vector3" and DragonNeck.LookAt(DragonModel, root.CFrame, scale, aim) or nil
+	return root.CFrame:PointToWorldSpace(DragonNeck.Mouth(DragonModel, look) * scale)
 end
 
 return Powers
