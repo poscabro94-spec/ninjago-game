@@ -1,4 +1,4 @@
--- Shatterspin v1.2  (ModuleScript in ServerScriptService)
+-- Shatterspin v1.3  (ModuleScript in ServerScriptService)
 -- Shatterspin (X): a red + black, destructive Spinjitzu. Faster than Spinjitzu, it wrecks anyone
 -- it touches (damage + flung away), throws loose things around, and nothing can hurt you while
 -- it's on. It doesn't stop until it's broken (or you press X again: ShatterCooldown before the next).
@@ -134,7 +134,7 @@ end
 
 local function onDragon(rider)
 	local phase = rider:GetAttribute("DragonPhase")
-	return phase == "rise" or phase == "fly"
+	return phase == "rise" or phase == "fly" or phase == "merge" -- (you can lock on in a merge too)
 end
 
 -- the rider pressed the lock key with `target` picked (their client picks whoever's nearest the

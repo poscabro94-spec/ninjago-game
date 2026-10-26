@@ -1,4 +1,4 @@
--- SpinjitzuConfig v16.3  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuConfig v16.4  (ModuleScript in ReplicatedStorage)
 
 local Config = {}
 
@@ -152,6 +152,9 @@ Config.CreationRange = 40         -- studs: how close the other 3 must be
 Config.CreationStagger = 0.8      -- seconds between each ninja starting
 Config.CreationGatherTime = 1.2   -- seconds for the 4 tornadoes to come together
 Config.CreationTime = 10          -- seconds the big tornado lasts
+Config.CreationMoveSpeed = 7      -- studs/s: one of the players in it (random) steers it, slowly
+Config.CreationRadius = 14        -- studs: it hurts + throws whoever's this close (and breaks Shatterspin)
+Config.CreationDamage = 12        -- per hit (twice a second)
 Config.CreationScale = 4          -- size of the big tornado
 Config.CreationBot = true         -- 4 bots that demo it on a loop
 

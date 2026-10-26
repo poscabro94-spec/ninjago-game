@@ -1,4 +1,4 @@
--- SpinjitzuElements v3.1  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuElements v3.2  (ModuleScript in ReplicatedStorage)
 -- Element-specific extras for the Spinjitzu tornado: Lightning arcs, Earth rock particles +
 -- faint dust, Ice frost, Shatterspin's red + black swarm, and the matching spark styles. Used by
 -- SpinjitzuEffect.
@@ -621,7 +621,7 @@ function Elements.Build.shatter(fx)
 
 	------------------------------------------------------------------------------------
 	-- ... and all AROUND it: a wide storm of streaks, ash, embers, smoke, sparks, bolts in the air
-	-- and rocks, a red glow + scorch on the floor with shockwaves rippling out
+	-- and rocks
 	------------------------------------------------------------------------------------
 
 	-- the outer storm: streaks whipping round far out from the funnel
@@ -690,37 +690,6 @@ function Elements.Build.shatter(fx)
 		count = 16, sizeMin = 0.4, sizeMax = 1.1, material = Enum.Material.Basalt,
 		colors = { Color3.fromRGB(20, 18, 20), Color3.fromRGB(45, 10, 12), Color3.fromRGB(30, 28, 30) },
 		hMin = 0.25, hMax = 0.8, rMin = 1.8, rMax = 2.9,
-	})
-
-	-- the floor: a red glow under it, a scorched ring round that, shockwaves rippling out
-	local function flat(radius, inner, color, alpha, y)
-		local ad = make("CylinderHandleAdornment", {
-			Adornee = fx.basePart, Radius = radius, InnerRadius = inner, Height = 0.05, Color3 = color,
-			Transparency = 1, AlwaysOnTop = false, ZIndex = 0, CFrame = CFrame.new(0, y, 0) * CFrame.Angles(math.pi / 2, 0, 0),
-		}, fx.basePart)
-		return { ad = ad, alpha = alpha, radius = radius, inner = inner }
-	end
-	local glow = flat(9, 0, c, 0.55, 0.06)
-	local core = flat(4, 0, WHITE:Lerp(hi, 0.5), 0.5, 0.08)
-	local scorch = flat(15, 8.5, black, 0.45, 0.05)
-	local ripples = {}
-	for i = 1, 4 do ripples[i] = flat(3, 2.6, i % 2 == 0 and black or c, 0.15, 0.1 + i * 0.01) end
-	local on = false -- (after the windup; when it stops they shrink + fade with the tornado)
-	install(fx, {
-		begin = function() on = true end,
-		update = function(fx2, _, _, s2, t)
-			local vis = on and math.clamp(s2, 0, 1) or 0
-			for _, f in ipairs({ glow, core, scorch }) do
-				f.ad.Transparency = 1 - (1 - f.alpha) * vis * (0.9 + 0.1 * math.sin(t * 9))
-				f.ad.Radius, f.ad.InnerRadius = f.radius * fx2.size, f.inner * fx2.size
-			end
-			for i, r in ipairs(ripples) do
-				local k = (t / 0.9 + i / #ripples) % 1
-				local rad = (2 + k * 16) * fx2.size
-				r.ad.Radius, r.ad.InnerRadius = rad, rad - 0.5 * fx2.size
-				r.ad.Transparency = 1 - (1 - r.alpha) * (1 - k) * vis
-			end
-		end,
 	})
 end
 

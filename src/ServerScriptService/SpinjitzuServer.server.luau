@@ -1,4 +1,4 @@
--- SpinjitzuServer v8.1  (Script in ServerScriptService)
+-- SpinjitzuServer v8.2  (Script in ServerScriptService)
 -- Toggles Spinjitzu on the character (every client renders it), handles element
 -- switching (E), the speed boost, Shatterspin (X, see Shatterspin) and the Dragon move (R):
 -- spin -> rise straight up -> DragonFlyTime seconds of flight -> land (R again lands early).
@@ -114,6 +114,10 @@ remote.OnServerEvent:Connect(function(player, action, value)
 	if not character then return end
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if not humanoid or humanoid.Health <= 0 then return end
+	if action == "creationMove" then -- (steering the Tornado of Creation)
+		Creation.steer(character, value)
+		return
+	end
 	if Creation.busy[character] then return end -- in the middle of a Tornado of Creation
 
 	if action == "creation" then

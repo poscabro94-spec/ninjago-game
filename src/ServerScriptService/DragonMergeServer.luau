@@ -1,4 +1,4 @@
--- DragonMergeServer v1.1  (ModuleScript in ServerScriptService)
+-- DragonMergeServer v1.2  (ModuleScript in ServerScriptService)
 -- Runs Rising Dragon merges (the shared maths + what a merge is: ReplicatedStorage.DragonMerge).
 --   request(character)  the merge key (G) on the dragon: with at least 3 dragons close together
 --                       (you + other riders + your dragon crew, up to 6) you all merge: swoop
@@ -165,7 +165,6 @@ local function form(members, leader)
 		m:SetAttribute("MergeFrom", root.CFrame)
 		m:SetAttribute("MergeAt", now)
 		m:SetAttribute("DragonPhase", "merge")
-		Shatter.unlock(m)
 		root.Anchored = true
 	end
 	groups[cfg] = g
@@ -320,7 +319,7 @@ end)
 ----------------------------------------------------------------------------------------
 -- the dragon crew: bots you pick (up to 5) to merge with on your own. They stand spread out round
 -- you; when you do the Rising Dragon each does its own (Spinjitzu -> rises up on its dragon, a
--- moment apart), then they fly with you in a V; when you land they dive back to their spots
+-- moment apart), then they fly with you in a V; when you land they dive down round where you land
 ----------------------------------------------------------------------------------------
 
 local ELEMENTS = { Fire = true, Lightning = true, Ice = true, Water = true, Earth = true, Energy = true }
@@ -408,6 +407,21 @@ RunService.Heartbeat:Connect(function(dt)
 				end
 			elseif st.mode == "fly" then
 				if not riding then
+					-- land spread round where you come down (you dive straight down)
+					local n, look = 0, flat(oroot.CFrame.LookVector, Vector3.new(0, 0, -1))
+					for _, other in pairs(crew) do
+						if other.owner == st.owner then n += 1 end
+					end
+					local a = math.atan2(look.Z, look.X) + math.pi + ((st.slot - 0.5) / math.max(n, 1) - 0.5) * math.pi * 1.25
+					local spot = Vector3.new(oroot.Position.X + math.cos(a) * 18, oroot.Position.Y, oroot.Position.Z + math.sin(a) * 18)
+					local params = RaycastParams.new()
+					params.FilterType = Enum.RaycastFilterType.Exclude
+					params.FilterDescendantsInstances = { bot, st.owner.Character }
+					local hit = workspace:Raycast(spot + Vector3.new(0, 20, 0), Vector3.new(0, -500, 0), params)
+					local hum = bot:FindFirstChildOfClass("Humanoid")
+					local y = (hit and hit.Position.Y or st.home.Position.Y - 3) + (hum and hum.HipHeight or 2) + root.Size.Y / 2
+					local ground = Vector3.new(spot.X, y, spot.Z)
+					st.home = CFrame.lookAt(ground, Vector3.new(oroot.Position.X, y, oroot.Position.Z))
 					st.mode, st.t, st.from = "land", 0, root.CFrame
 				else
 					-- a V behind you

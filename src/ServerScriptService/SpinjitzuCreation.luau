@@ -1,16 +1,44 @@
--- SpinjitzuCreation v1.2  (ModuleScript in ServerScriptService)
+-- SpinjitzuCreation v1.3  (ModuleScript in ServerScriptService)
 -- Tornado of Creation: 4 ninja (Fire, Earth, Lightning, Ice) start Spinjitzu one after
--- another, their tornadoes come together, and merge into one huge tornado. Used by
--- SpinjitzuServer (players pressing T) and SpinjitzuBot (the demo bots).
+-- another, their tornadoes come together, and merge into one huge tornado. One of the players in
+-- it (picked at random) steers it, slowly (walk to move it: their client sends where they're
+-- walking, see steer), and it wrecks whoever it touches (and breaks Shatterspin). Used by
+-- SpinjitzuServer (players pressing T) and SpinjitzuBot (the demo bots: nobody steers those,
+-- and they don't hurt anyone).
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage:WaitForChild("SpinjitzuConfig"))
+local Status = require(script.Parent:WaitForChild("StatusEffects"))
+local HitEffects = require(script.Parent:WaitForChild("HitEffects"))
 
 local Creation = {}
 Creation.busy = {} -- [character] = true while part of a Creation
+local piloting = {} -- [pilot character] = { move = Vector3 }
+
+local HIT = { -- how its hits look (HitEffects)
+	HitColor = Color3.fromRGB(170, 230, 255), HitTextColor = Color3.fromRGB(200, 240, 255),
+	Sounds = {
+		Hit = { "rbxassetid://115899453415449", "rbxassetid://77794845234498" },
+		Final = "rbxassetid://73278613369675",
+	},
+}
+
+-- the pilot's client: where they're walking (Humanoid.MoveDirection), a few times a second
+function Creation.steer(character, v)
+	local st = piloting[character]
+	if st and typeof(v) == "Vector3" then
+		local flat = Vector3.new(v.X, 0, v.Z)
+		st.move = flat.Magnitude > 1 and flat.Unit or flat
+	end
+end
+
+local function notify(player, text)
+	local remote = ReplicatedStorage:FindFirstChild("SpinjitzuToggle")
+	if remote and player then remote:FireClient(player, "notify", text) end
+end
 
 local TAU = math.pi * 2
 
@@ -143,7 +171,73 @@ function Creation.run(members)
 	end
 	task.wait(0.1)
 	anchor:SetAttribute("SpinjitzuActive", true)
-	task.wait(Config.CreationTime or 10)
+
+	-- a random player in it steers it (slowly); it hurts + throws whoever it touches
+	local pilots = {}
+	for _, ch in ipairs(members) do
+		local p = Players:GetPlayerFromCharacter(ch)
+		if p then table.insert(pilots, p) end
+	end
+	local pilot = #pilots > 0 and pilots[math.random(#pilots)] or nil
+	local st = { move = Vector3.zero }
+	if pilot then
+		piloting[pilot.Character] = st
+		anchor:SetAttribute("Pilot", pilot.UserId)
+		for _, p in ipairs(pilots) do
+			notify(p, p == pilot and "You're steering the Tornado of Creation: walk to move it"
+				or (pilot.DisplayName .. " is steering the Tornado of Creation"))
+		end
+	end
+	local ignore = table.clone(members)
+	table.insert(ignore, anchor)
+	local aRoot = anchor:FindFirstChild("HumanoidRootPart")
+	local anchorUp = aRoot.Position.Y - groundY
+	local memberUp = {}
+	for i, root in ipairs(roots) do memberUp[i] = root.Position.Y - groundY end
+	local t0, hitT = os.clock(), 0
+	local hitAt = {}
+	while os.clock() - t0 < (Config.CreationTime or 10) do
+		local dt = RunService.Heartbeat:Wait()
+		if pilot then
+			if st.move.Magnitude > 0.05 then
+				center += st.move * (Config.CreationMoveSpeed or 7) * dt
+				groundY = groundBelow(center, ignore)
+				anchor:PivotTo(CFrame.new(center.X, groundY + anchorUp, center.Z) * aRoot.CFrame.Rotation)
+				for i, root in ipairs(roots) do
+					if root.Parent then root.CFrame = CFrame.new(center.X, groundY + memberUp[i], center.Z) * root.CFrame.Rotation end
+				end
+			end
+			hitT -= dt
+			if hitT <= 0 then
+				hitT = 0.25
+				local params = OverlapParams.new()
+				params.FilterType = Enum.RaycastFilterType.Exclude
+				params.FilterDescendantsInstances = ignore
+				local now, done = os.clock(), {}
+				local pos = Vector3.new(center.X, groundY + 3, center.Z)
+				for _, part in ipairs(workspace:GetPartBoundsInRadius(pos, Config.CreationRadius or 14, params)) do
+					local model = part:FindFirstAncestorOfClass("Model")
+					if model and not done[model] and model:FindFirstChildOfClass("Humanoid") then
+						done[model] = true
+						if model:GetAttribute("Shatterspin") then
+							require(script.Parent:WaitForChild("Shatterspin")).stop(model, true)
+						end
+						local hum = Status.target(model, members[1])
+						local tRoot = model:FindFirstChild("HumanoidRootPart")
+						if hum and tRoot and now - (hitAt[model] or 0) >= 0.5 then
+							hitAt[model] = now
+							local dmg = Config.CreationDamage or 12
+							hum:TakeDamage(dmg)
+							model:SetAttribute("LastHit", now)
+							HitEffects.show(HIT, tRoot, model, dmg, false)
+							Status.blast(model, pos, 75)
+						end
+					end
+				end
+			end
+		end
+	end
+	if pilot then piloting[pilot.Character] = nil end
 
 	-- 4) it winds down; each ninja Spinjitzus out of it to a spot nearby and stops there
 	anchor:SetAttribute("SpinjitzuActive", false)
@@ -154,7 +248,7 @@ function Creation.run(members)
 		ch:SetAttribute("SpinjitzuActive", true)
 		local a = (i - 1) / #members * TAU + math.pi / 4 + rng:NextNumber(-0.45, 0.45)
 		local r = rng:NextNumber(13, 20)
-		targets[i] = Vector3.new(center.X + math.cos(a) * r, saved[i].cf.Position.Y, center.Z + math.sin(a) * r)
+		targets[i] = Vector3.new(center.X + math.cos(a) * r, groundY + memberUp[i], center.Z + math.sin(a) * r)
 	end
 	task.wait(0.45)
 	spinTo(roots, targets, 1.4)

@@ -1,4 +1,4 @@
--- SpinjitzuClient v11.1  (LocalScript in StarterPlayer > StarterPlayerScripts)
+-- SpinjitzuClient v11.2  (LocalScript in StarterPlayer > StarterPlayerScripts)
 -- Q toggles Spinjitzu, X Shatterspin, E switches element, R does the Dragon (spin -> rise -> 6s of
 -- flight -> landing). Flying, you keep going where the camera looks (A/D drift, Space up, Ctrl down,
 -- Shift faster); C locks onto a Shatterspinner and the camera keeps them in front of you; G merges
@@ -109,7 +109,7 @@ local function toggleLock()
 	local character = localPlayer.Character
 	local phase = character and character:GetAttribute("DragonPhase")
 	local root = character and character:FindFirstChild("HumanoidRootPart")
-	if (phase ~= "rise" and phase ~= "fly") or not root then return end
+	if (phase ~= "rise" and phase ~= "fly" and phase ~= "merge") or not root then return end
 	if lockTarget(character) then
 		toggleRemote:FireServer("lock", nil)
 		return
@@ -587,6 +587,8 @@ localPlayer:GetAttributeChangedSignal("SpinjitzuElement"):Connect(function()
 	end)
 end)
 
+local creationSendT = 0
+
 -- this client spins its own character, plus NPCs (nobody else owns them)
 local function drivesSpin(character)
 	return character == localPlayer.Character or CollectionService:HasTag(character, NPC_TAG)
@@ -761,7 +763,10 @@ mergeUpdate = function(dt)
 				steerT -= dt
 				if steerT <= 0 then
 					steerT = 1 / 15
-					toggleRemote:FireServer("mergeDir", workspace.CurrentCamera.CFrame.LookVector)
+					-- (locked on: straight at them)
+					local target = lockTarget(me)
+					local look = target and (target.Position - st.center).Unit or workspace.CurrentCamera.CFrame.LookVector
+					toggleRemote:FireServer("mergeDir", look)
 				end
 			end
 		end
@@ -891,6 +896,15 @@ RunService.RenderStepped:Connect(function(dt)
 	for npc in pairs(npcFlights) do npcFlightUpdate(npc, dt) end
 	flightUpdate(dt)
 	mergeUpdate(dt)
+	-- inside a Tornado of Creation: tell the server where you're walking (if you're its pilot, it
+	-- moves that way)
+	creationSendT -= dt
+	local me = localPlayer.Character
+	if creationSendT <= 0 and me and me:GetAttribute("CreationPhase") == "inside" then
+		creationSendT = 0.1
+		local hum = me:FindFirstChildOfClass("Humanoid")
+		if hum then toggleRemote:FireServer("creationMove", hum.MoveDirection) end
+	end
 	lodUpdate(dt)
 	creationHideUpdate()
 	for d in pairs(dragonRunning) do
@@ -1135,7 +1149,9 @@ RunService:BindToRenderStep("DragonHUD", Enum.RenderPriority.Camera.Value + 1, f
 		local leader = mergeFolder and character:GetAttribute("MergeId")
 			and mergeFolder:FindFirstChild("Merge" .. character:GetAttribute("MergeId"))
 		local steering = leader and leader:GetAttribute("Leader") == localPlayer.UserId
-		hint.Text = (steering and "steer with your camera - crash into something!  " or "") .. ("%s = break away"):format(mkey)
+		hint.Text = (steering and "steer with your camera - crash into something!  " or "")
+			.. ("%s = lock on   %s = break away"):format(key, mkey)
+		if locked then hint.Text = ("locked on - %s"):format(steering and "crash into them!" or "the leader steers") end
 	elseif locked then
 		hint.Text = ("fly into them!  (%s = let go)"):format(key)
 	else
@@ -1173,10 +1189,11 @@ RunService:BindToRenderStep("DragonHUD", Enum.RenderPriority.Camera.Value + 1, f
 	local cam = workspace.CurrentCamera
 	if lockBlend > 0.01 and locked and root and cam then
 		local zoom = math.clamp((cam.CFrame.Position - cam.Focus.Position).Magnitude, 8, 35)
-		local to = locked.Position - root.Position
+		local from = mergeFocus and mergeFocus.Position or root.Position -- (in a merge: its middle)
+		local to = locked.Position - from
 		if to.Magnitude > 1 then
 			local dir = to.Unit
-			local camPos = root.Position - dir * zoom + Vector3.new(0, zoom * 0.3, 0)
+			local camPos = from - dir * zoom + Vector3.new(0, zoom * 0.3, 0)
 			cam.CFrame = cam.CFrame:Lerp(CFrame.lookAt(camPos, locked.Position), lockBlend)
 		end
 	end
