@@ -1,4 +1,4 @@
--- ElementPowersServer v1.1  (Script in ServerScriptService)
+-- ElementPowersServer v1.2  (Script in ServerScriptService)
 -- The elemental powers (settings in ElementPowers). The client (ElementPowersClient) sends:
 --   "ball", aim         tap left click: next lightning ball of the combo
 --   "beam", aim / false hold left click: beam on / let go: off
@@ -15,6 +15,8 @@ local Debris = game:GetService("Debris")
 local Powers = require(ReplicatedStorage:WaitForChild("ElementPowers"))
 local Config = require(ReplicatedStorage:WaitForChild("SpinjitzuConfig"))
 local HitEffects = require(script.Parent:WaitForChild("HitEffects"))
+local Bots = require(script.Parent:WaitForChild("SpinjitzuBots"))
+local TrainingDummy = require(script.Parent:WaitForChild("TrainingDummy"))
 local L = Powers.Lightning
 
 local remote = ReplicatedStorage:FindFirstChild("ElementPower")
@@ -268,15 +270,21 @@ local function launchBall(character, origin, dir, ball)
 	end)
 end
 
-local combos = {} -- [player] = { step, start, len }
+-- A caster is a player or a bot (the demo bot): `key` identifies it, check() returns its
+-- character + root while it can use the power, nil when it can't (anymore).
+local function playerCheck(player)
+	return function() return ready(player) end
+end
 
-local function throw(player, aim)
-	local character, root = ready(player)
+local combos = {} -- [key] = { step, start, len }
+
+local function throw(key, check, aim)
+	local character, root = check()
 	if not character or character:GetAttribute("PowerBeam") then return end
-	local c = combos[player]
+	local c = combos[key]
 	if not c then
 		c = { step = 0, start = 0, len = 0 }
-		combos[player] = c
+		combos[key] = c
 	end
 	local now = os.clock()
 	if now - c.start < c.len * 0.8 then return end -- still mid-throw
@@ -284,6 +292,7 @@ local function throw(player, aim)
 	c.step = c.step % #L.Balls + 1
 	local ball = L.Balls[c.step]
 	c.start, c.len = now, ball.time
+	character:SetAttribute("PowerAim", aim)
 	character:SetAttribute("PowerMove", ball.name)
 	character:SetAttribute("PowerId", (character:GetAttribute("PowerId") or 0) + 1)
 	local whoosh = Instance.new("Sound")
@@ -294,7 +303,7 @@ local function throw(player, aim)
 	if ball.hands == "B" then playSound(root, L.Sounds.Zap, 0.5, 0.7) end -- the big one charges up
 
 	task.delay(ball.time * ball.release, function()
-		if player.Character ~= character or not root.Parent then return end
+		if not character.Parent or not root.Parent then return end
 		-- the server doesn't see the arm animation: let go about where the palm is
 		local x = ball.hands == "R" and 1.0 or (ball.hands == "L" and -1.0 or 0)
 		local origin = root.CFrame:PointToWorldSpace(Vector3.new(x, 1.0, -1.8))
@@ -305,32 +314,32 @@ local function throw(player, aim)
 end
 
 ----------------------------------------------------------------------------------------
--- lightning beam: damage ticks along the line from the hand to the aim
+-- lightning beam: damage ticks along the line from the hands to the aim
 ----------------------------------------------------------------------------------------
 
-local beams = {} -- [player] = { character, last, total, ticks }
+local beams = {} -- [key] = { character, check, last, total, ticks }
 
-local function stopBeam(player)
-	local b = beams[player]
-	beams[player] = nil
+local function stopBeam(key)
+	local b = beams[key]
+	beams[key] = nil
 	if b and b.character.Parent then b.character:SetAttribute("PowerBeam", nil) end
 end
 
-local function startBeam(player, aim)
-	if beams[player] then return end
-	local character = ready(player)
+local function startBeam(key, check, aim)
+	if beams[key] then return end
+	local character = check()
 	if not character then return end
 	if validAim(aim) then character:SetAttribute("PowerAim", aim) end
 	character:SetAttribute("PowerBeam", true)
-	beams[player] = { character = character, last = 0, total = {}, ticks = 0 }
+	beams[key] = { character = character, check = check, last = 0, total = {}, ticks = 0 }
 end
 
 RunService.Heartbeat:Connect(function()
 	local now = os.clock()
-	for player, b in pairs(beams) do
-		local character, root = ready(player)
+	for key, b in pairs(beams) do
+		local character, root = b.check()
 		if character ~= b.character then
-			stopBeam(player)
+			stopBeam(key)
 		elseif now - b.last >= L.BeamTick then
 			b.last = now
 			b.ticks += 1
@@ -364,9 +373,9 @@ end)
 
 remote.OnServerEvent:Connect(function(player, action, value)
 	if action == "ball" then
-		if validAim(value) then throw(player, value) end
+		if validAim(value) then throw(player, playerCheck(player), value) end
 	elseif action == "beam" then
-		if value == false then stopBeam(player) else startBeam(player, value) end
+		if value == false then stopBeam(player) else startBeam(player, playerCheck(player), value) end
 	elseif action == "aim" then
 		local b = beams[player]
 		if b and validAim(value) then b.character:SetAttribute("PowerAim", value) end
@@ -377,3 +386,42 @@ Players.PlayerRemoving:Connect(function(player)
 	beams[player] = nil
 	combos[player] = nil
 end)
+
+----------------------------------------------------------------------------------------
+-- demo bot: a Lightning ninja 50 studs behind the Lightning Spinjitzu bot, with an infinite
+-- dummy to aim at: ball, ball, big ball, 3 seconds of beam, on repeat
+----------------------------------------------------------------------------------------
+
+if Powers.DemoBot then
+	task.spawn(function()
+		local spinBot = workspace:WaitForChild("SpinjitzuBot_Lightning", 15)
+		local base = spinBot and spinBot:GetPivot().Position or Vector3.new(8, 0, 20)
+		local spot = Vector3.new(base.X, 0, base.Z + 50)
+		local target = spot + Vector3.new(0, 0, 22)
+		local dummy = TrainingDummy.spawn(target, spot, { infinite = true })
+		local bot = Bots.make("Lightning", spot, "PowerBot_Lightning", target)
+		bot:FindFirstChildOfClass("Humanoid").DisplayName = "Lightning Power Bot"
+		CollectionService:AddTag(bot, "AnimatedNPC") -- clients animate its arms like a player's
+		local root = bot:WaitForChild("HumanoidRootPart")
+		local check = function()
+			if bot.Parent and root.Parent then return bot, root end
+			return nil
+		end
+		local function aim()
+			local dRoot = dummy and dummy.Parent and dummy:FindFirstChild("HumanoidRootPart")
+			return dRoot and dRoot.Position or target + Vector3.new(0, 3, 0)
+		end
+		task.wait(3)
+		while bot.Parent do
+			for i = 1, #L.Balls do
+				throw(bot, check, aim())
+				task.wait(L.Balls[i].time + 0.3)
+			end
+			task.wait(0.5)
+			startBeam(bot, check, aim())
+			task.wait(3)
+			stopBeam(bot)
+			task.wait(1.5)
+		end
+	end)
+end

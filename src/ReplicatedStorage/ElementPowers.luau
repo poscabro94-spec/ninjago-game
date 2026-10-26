@@ -1,4 +1,4 @@
--- ElementPowers v1.1  (ModuleScript in ReplicatedStorage)
+-- ElementPowers v1.2  (ModuleScript in ReplicatedStorage)
 -- Elemental powers, used with empty hands (no Golden Weapon out). For now: Lightning.
 --   tap left click:    lightning ball from the right hand -> the left hand -> a big one from
 --                      both hands that explodes
@@ -8,7 +8,12 @@
 -- The server (ElementPowersServer) sets these attributes on the character:
 --   PowerMove + PowerId (a throw started), PowerBeam (beam on), PowerAim (where it points)
 
+local Players = game:GetService("Players")
+
 local Powers = {}
+
+Powers.DemoBot = true -- a Lightning bot behind the Lightning Spinjitzu bot that shows the powers on a loop
+Powers.LocalAim = nil -- set every frame by ElementPowersClient while you beam: your arms follow your mouse
 
 Powers.Lightning = {
 	Color = Color3.fromRGB(90, 200, 255),
@@ -109,6 +114,8 @@ function Powers.Step(character, root, pose, dt, armsFree)
 
 	-- beam: both arms straight out toward the aim, hands close together, trembling a little
 	local aim = character:GetAttribute("PowerAim")
+	local me = Players.LocalPlayer
+	if Powers.LocalAim and me and character == me.Character then aim = Powers.LocalAim end
 	if character:GetAttribute("PowerBeam") and typeof(aim) == "Vector3" then
 		out = out == pose and table.clone(pose) or out
 		local d = root.CFrame:VectorToObjectSpace(aim - (root.Position + Vector3.new(0, 1.5, 0)))

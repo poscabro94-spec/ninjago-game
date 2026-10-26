@@ -1,10 +1,12 @@
--- NinjaAnimator v1.5  (ModuleScript in ReplicatedStorage)
+-- NinjaAnimator v1.6  (ModuleScript in ReplicatedStorage)
 -- Procedural player animations, no animation assets: idle, walk, run, jump, fall, landing,
 -- plus the parkour moves (vault, mantle, wall run). Every client animates every player, so
 -- everyone sees the same thing. SpinjitzuClient calls NinjaAnimator.Step() in Stepped
 -- BEFORE the Spinjitzu / dragon poses, so those still play on top.
+-- Bots tagged "AnimatedNPC" (e.g. the Lightning power demo bot) are animated the same way.
 
 local Players = game:GetService("Players")
+local CollectionService = game:GetService("CollectionService")
 local GoldenWeapons = require(game:GetService("ReplicatedStorage"):WaitForChild("GoldenWeapons"))
 -- optional: if the ElementPowers module is missing, everything else still animates
 local ElementPowers
@@ -201,8 +203,11 @@ end
 
 function Animator.Step(dt)
 	dt = math.min(dt, 0.1)
+	local characters = CollectionService:GetTagged("AnimatedNPC")
 	for _, player in ipairs(Players:GetPlayers()) do
-		local character = player.Character
+		if player.Character then table.insert(characters, player.Character) end
+	end
+	for _, character in ipairs(characters) do
 		local root = character and character:FindFirstChild("HumanoidRootPart")
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		if root and humanoid and humanoid.Health > 0 then

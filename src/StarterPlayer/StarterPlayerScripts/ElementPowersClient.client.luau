@@ -1,4 +1,4 @@
--- ElementPowersClient v1.1  (LocalScript in StarterPlayerScripts)
+-- ElementPowersClient v1.2  (LocalScript in StarterPlayerScripts)
 -- Your elemental power button (Lightning, empty hands): tap left click = lightning ball combo,
 -- hold left click = beam. Turns you toward where you aim. Draws the effects for everyone:
 --   beam: a beam from each hand meets in a glowing orb in front of you, one big crackling beam
@@ -9,6 +9,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local CollectionService = game:GetService("CollectionService")
 
 local Powers = require(ReplicatedStorage:WaitForChild("ElementPowers"))
 local Config = require(ReplicatedStorage:WaitForChild("SpinjitzuConfig"))
@@ -47,10 +48,26 @@ end
 
 local pressedAt -- os.clock() while left click is down
 local beaming = false
+local hadAutoRotate
+
+-- while beaming you face the aim, so Roblox mustn't turn you toward where you walk
+local function setAutoRotate(on)
+	local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	if not hum then return end
+	if not on then
+		hadAutoRotate = hum.AutoRotate
+		hum.AutoRotate = false
+	elseif hadAutoRotate ~= nil then
+		hum.AutoRotate = hadAutoRotate
+		hadAutoRotate = nil
+	end
+end
 
 local function stopBeam()
 	if beaming then
 		beaming = false
+		Powers.LocalAim = nil
+		setAutoRotate(true)
 		remote:FireServer("beam", false)
 	end
 end
@@ -75,6 +92,7 @@ RunService.RenderStepped:Connect(function(dt)
 	if pressedAt and not beaming and os.clock() - pressedAt >= L.HoldTime then
 		if canUse() then
 			beaming = true
+			setAutoRotate(false)
 			face(mouse.Hit.Position)
 			remote:FireServer("beam", mouse.Hit.Position)
 		else
@@ -87,7 +105,8 @@ RunService.RenderStepped:Connect(function(dt)
 		pressedAt = nil
 		return
 	end
-	face(mouse.Hit.Position)
+	Powers.LocalAim = mouse.Hit.Position
+	face(Powers.LocalAim)
 	sendT -= dt
 	if sendT <= 0 then
 		sendT = 1 / 15
@@ -249,6 +268,15 @@ local function dropBeam(character, d)
 	end
 end
 
+-- players' characters + bots that use powers (the demo bot)
+local function casters()
+	local list = CollectionService:GetTagged("AnimatedNPC")
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p.Character then table.insert(list, p.Character) end
+	end
+	return list
+end
+
 local drawn = {} -- [character] = beam
 local rayParams = RaycastParams.new()
 rayParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -260,14 +288,14 @@ end
 
 local function updateBeams(dt, rebendNow)
 	local now = os.clock()
-	for _, p in ipairs(Players:GetPlayers()) do
-		local character = p.Character
-		local on = character and character:GetAttribute("PowerBeam")
+	for _, character in ipairs(casters()) do
+		local mine = character == player.Character
+		local on = character:GetAttribute("PowerBeam")
 		local handR = character and character:FindFirstChild("RightHand")
 		local handL = character and character:FindFirstChild("LeftHand")
 		local root = character and character:FindFirstChild("HumanoidRootPart")
 		local aim = character and character:GetAttribute("PowerAim")
-		if p == player and beaming then aim = mouse.Hit.Position end -- your own: no delay
+		if mine and beaming then aim = mouse.Hit.Position end -- your own: no delay
 		if on and handR and handL and root and typeof(aim) == "Vector3" then
 			local d = drawn[character]
 			if not d then
@@ -328,7 +356,7 @@ local function updateBeams(dt, rebendNow)
 				end
 			end
 			-- your own beam shakes the camera a little
-			if p == player then
+			if mine then
 				local hum = character:FindFirstChildOfClass("Humanoid")
 				if hum then hum.CameraOffset = Vector3.new(rng:NextNumber(-0.06, 0.06), rng:NextNumber(-0.06, 0.06), 0) end
 			end
@@ -426,9 +454,8 @@ local function windUp(character, ball)
 end
 
 local function updateWindUps()
-	for _, p in ipairs(Players:GetPlayers()) do
-		local character = p.Character
-		if character then
+	for _, character in ipairs(casters()) do
+		do
 			local id = character:GetAttribute("PowerId") or 0
 			if lastPowerId[character] == nil then
 				lastPowerId[character] = id
