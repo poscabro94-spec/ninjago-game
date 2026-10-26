@@ -40,8 +40,11 @@ SKULL = [  # z, half width, top, bottom  (back -> snout): a wide shield, widest 
     (-3.4, 0.75, 0.6, -0.24),
 ]
 SKULL_TIP = V(0, 0.2, -3.95)
-JAW = [(0.3, 1.15, -0.4, -0.95), (-1.2, 1.05, -0.4, -0.88), (-2.5, 0.85, -0.4, -0.75), (-3.3, 0.55, -0.4, -0.62)]
-JAW_TIP = V(0, -0.47, -3.75)
+JAW = [  # heavier: a strong angle at the back, tapering to a chin
+    (0.35, 1.2, -0.4, -1.2), (-0.7, 1.15, -0.4, -1.08), (-1.9, 0.98, -0.4, -0.88),
+    (-2.9, 0.75, -0.4, -0.74), (-3.5, 0.55, -0.42, -0.7),
+]
+JAW_TIP = V(0, -0.5, -3.9)
 JAW_HINGE = V(0, -0.4, 0.3)
 JAW_OPEN = 0.6      # the mouth is wide open (radians)
 
@@ -112,14 +115,16 @@ def build_head():
     for z in (-0.25, -0.95, -1.65):
         plate(p, V(0, 1.15, z), V(0.12, 0.38, 0.62), V(-0.5, 0, 0))
     plate(p, V(0, 0.72, -3.0), V(0.5, 0.2, 1.15), V(0.18, 0, 0))
-    # the open mouth: white light filling it (roof, floor and both sides of the gap) ...
-    p.glow.append((V(0, -0.44, -1.7), V(1.3, 0.06, 2.9), V(0, 0, 0), 0, "block"))
-    jc = turn(V(0, -0.42, -1.6))
-    p.glow.append((jc, V(1.1, 0.06, 3.0), V(-JAW_OPEN, 0, 0), 0, "block"))
-    p.glow.append((V(0, -0.62, -1.5), V(0.9, 0.45, 2.3), V(-JAW_OPEN / 2, 0, 0), 0.15, "block"))
+    # the inside of the mouth is white: the roof, the floor, the gums the teeth grow from and the
+    # back of the throat (the gap between the jaws stays open)
+    p.glow.append((V(0, -0.43, -1.75), V(1.15, 0.04, 3.1), V(0, 0, 0), 0, "block"))         # roof
+    jc = turn(V(0, -0.41, -1.75))
+    p.glow.append((jc, V(1.05, 0.04, 3.1), V(-JAW_OPEN, 0, 0), 0, "block"))                # floor
     for sx in (1, -1):
-        A, B, C = V(sx * 0.4, -0.45, 0.25), V(sx * 0.3, -0.42, -3.25), turn(V(sx * 0.3, -0.42, -3.1))
-        p.gtris.append((A, B, C))
+        p.glow.append((V(sx * 0.56, -0.5, -1.85), V(0.05, 0.16, 2.9), V(0, 0, 0), 0, "block"))     # upper gums
+        p.glow.append((turn(V(sx * 0.54, -0.35, -1.75)), V(0.05, 0.16, 2.7), V(-JAW_OPEN, 0, 0), 0, "block"))  # lower
+    throat = [V(-0.55, -0.42, 0.05), V(0.55, -0.42, 0.05), turn(V(0.55, -0.42, 0.1)), turn(V(-0.55, -0.42, 0.1))]
+    p.gtris.append((throat[0], throat[1], throat[2])); p.gtris.append((throat[0], throat[2], throat[3]))
     # ... with jagged teeth along both jaws, dark against the light
     for sx in (1, -1):
         for i, z in enumerate([-0.55, -1.0, -1.45, -1.9, -2.35, -2.8, -3.2]):
@@ -132,9 +137,20 @@ def build_head():
             x = sx * (0.6 - 0.03 * i)
             a, b, tip = turn(V(x, -0.42, z + 0.2)), turn(V(x, -0.42, z - 0.2)), turn(V(x, -0.42 + ln, z - 0.05))
             p.tri(a, b, tip); p.edge(a, tip, 0.03); p.edge(b, tip, 0.03)
-    # eyes: glowing white ovals in the sockets under the brows
+    # jawline: bumpy plates along the outside of the lower jaw, a block at each jaw angle, a chin
     for sx in (1, -1):
-        p.glow.append((V(sx * 1.27, 0.52, -1.35), V(0.16, 0.36, 0.8), V(0, sx * 0.25, sx * 0.2), 0, "oval"))
+        for z, s in ((-0.6, 0.85), (-1.6, 0.75), (-2.5, 0.6)):
+            c = turn(V(sx * (0.95 if z > -1 else 0.82 if z > -2 else 0.66), -0.82, z))
+            plate(p, c, V(0.32, 0.38 * s, 0.85), V(-JAW_OPEN, sx * 0.08, sx * 0.25))
+        plate(p, turn(V(sx * 1.05, -0.95, 0.35)), V(0.45, 0.6, 0.6), V(-JAW_OPEN, sx * 0.15, sx * 0.15))
+    plate(p, turn(V(0, -0.85, -3.5)), V(0.55, 0.3, 0.55), V(-JAW_OPEN + 0.25, 0, 0))
+    # eyes: glowing white ovals set into sockets framed by plates (brow above, cheekbone below,
+    # a plate in front and behind), so they peek out instead of sitting on a flat face
+    for sx in (1, -1):
+        p.glow.append((V(sx * 1.2, 0.5, -1.38), V(0.14, 0.34, 0.75), V(0, sx * 0.25, sx * 0.2), 0, "oval"))
+        plate(p, V(sx * 1.22, 0.2, -1.4), V(0.3, 0.2, 1.05), V(0, sx * 0.25, -sx * 0.35))     # cheekbone / lower lid
+        plate(p, V(sx * 1.18, 0.5, -0.82), V(0.32, 0.5, 0.22), V(0, sx * 0.25, 0))           # behind the eye
+        plate(p, V(sx * 1.12, 0.46, -1.98), V(0.28, 0.36, 0.2), V(0, sx * 0.3, 0))           # in front
     return p
 
 
