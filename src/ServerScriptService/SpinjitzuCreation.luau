@@ -1,4 +1,4 @@
--- SpinjitzuCreation v1.3  (ModuleScript in ServerScriptService)
+-- SpinjitzuCreation v1.4  (ModuleScript in ServerScriptService)
 -- Tornado of Creation: 4 ninja (Fire, Earth, Lightning, Ice) start Spinjitzu one after
 -- another, their tornadoes come together, and merge into one huge tornado. One of the players in
 -- it (picked at random) steers it, slowly (walk to move it: their client sends where they're
@@ -114,7 +114,10 @@ function Creation.run(members)
 	for i, ch in ipairs(members) do
 		local root = ch:FindFirstChild("HumanoidRootPart")
 		roots[i] = root
-		saved[i] = { cf = root.CFrame, anchored = root.Anchored, bot = CollectionService:HasTag(ch, "SpinjitzuNPC") }
+		-- (demo bots go back to their spots afterwards; your crew stays where it comes out)
+		local bot = CollectionService:HasTag(ch, "SpinjitzuNPC")
+		saved[i] = { cf = root.CFrame, anchored = root.Anchored, bot = bot,
+			demo = bot and not CollectionService:HasTag(ch, "CreationCrew") }
 		sum += root.Position
 		-- fresh start, so everyone's tornado appears in turn
 		if ch:GetAttribute("SpinjitzuActive") then ch:SetAttribute("SpinjitzuActive", false) end
@@ -262,7 +265,7 @@ function Creation.run(members)
 	-- demo bots Spinjitzu back to where they started, ready for the next loop
 	local back = {}
 	for i, s in ipairs(saved) do
-		if s.bot then back[i] = s.cf.Position end
+		if s.demo then back[i] = s.cf.Position end
 	end
 	if next(back) then
 		task.wait(2.5)

@@ -1,4 +1,4 @@
--- ElementPowersServer v2.5  (Script in ServerScriptService)
+-- ElementPowersServer v2.6  (Script in ServerScriptService)
 -- The elemental powers (settings in ElementPowers): Lightning, Fire, Ice, Earth.
 -- The client (ElementPowersClient) sends:
 --   "ball", aim         tap left click: next shot of the combo
@@ -19,6 +19,7 @@ local TimeZones = require(ReplicatedStorage:WaitForChild("TimeZones"))
 local Config = require(ReplicatedStorage:WaitForChild("SpinjitzuConfig"))
 local HitEffects = require(script.Parent:WaitForChild("HitEffects"))
 local Status = require(script.Parent:WaitForChild("StatusEffects"))
+local MergeServer = require(script.Parent:WaitForChild("DragonMergeServer"))
 local Bots = require(script.Parent:WaitForChild("SpinjitzuBots"))
 local TrainingDummy = require(script.Parent:WaitForChild("TrainingDummy"))
 local TAU = math.pi * 2
@@ -55,7 +56,7 @@ local function ready(player)
 	-- (on the Rising Dragon it's fine: the power comes out of the dragon's mouth)
 	local dragon = character:GetAttribute("DragonPhase")
 	if character:GetAttribute("SpinjitzuActive") or character:GetAttribute("CreationPhase")
-		or (dragon and dragon ~= "rise" and dragon ~= "fly") then
+		or (dragon and dragon ~= "rise" and dragon ~= "fly" and dragon ~= "merge") then
 		return nil
 	end
 	return character, root, P
@@ -828,7 +829,9 @@ RunService.Heartbeat:Connect(function(dt)
 				if dir.Magnitude > 0.5 then
 					local params = RaycastParams.new()
 					params.FilterType = Enum.RaycastFilterType.Exclude
-					params.FilterDescendantsInstances = { character }
+					local ignore = MergeServer.mates(character) or {} -- (in a merge: not the other dragons)
+					table.insert(ignore, character)
+					params.FilterDescendantsInstances = ignore
 					local hit = workspace:Spherecast(origin, P.BeamRadius, dir.Unit * TimeZones.clip(origin, dir.Unit, P.BeamRange), params)
 					local model = hit and hit.Instance:FindFirstAncestorOfClass("Model")
 					local hum = hit and Status.target(model, character)
@@ -839,12 +842,64 @@ RunService.Heartbeat:Connect(function(dt)
 	end
 end)
 
+----------------------------------------------------------------------------------------
+-- in a dragon merge, your crew's dragons breathe their powers with you, at whatever you aim at
+----------------------------------------------------------------------------------------
+
+local mirrors = {} -- [player] = { [bot] = true }
+
+local function crewCheck(bot)
+	return function()
+		local root = bot:FindFirstChild("HumanoidRootPart")
+		local hum = bot:FindFirstChildOfClass("Humanoid")
+		local P = Powers.ByElement[bot:GetAttribute("SpinjitzuElement") or ""]
+		if bot.Parent and root and hum and hum.Health > 0 and P and bot:GetAttribute("DragonPhase") == "merge" then
+			return bot, root, P
+		end
+		return nil
+	end
+end
+
+local function mirrorStart(player, aim)
+	local character = player.Character
+	local mates = character and MergeServer.mates(character)
+	if not mates or not beams[player] then return end
+	mirrors[player] = mirrors[player] or {}
+	for _, m in ipairs(mates) do
+		if not Players:GetPlayerFromCharacter(m) and not beams[m] then
+			startBeam(m, crewCheck(m), aim)
+			mirrors[player][m] = true
+		end
+	end
+end
+
+RunService.Heartbeat:Connect(function()
+	for player, bots in pairs(mirrors) do
+		local b = beams[player]
+		local aim = b and b.character:GetAttribute("PowerAim")
+		for bot in pairs(bots) do
+			if b and beams[bot] and bot:GetAttribute("DragonPhase") == "merge" then
+				if validAim(aim) and not beams[bot].clash then bot:SetAttribute("PowerAim", aim) end
+			else
+				stopBeam(bot, true)
+				bots[bot] = nil
+			end
+		end
+		if not b or not next(bots) then mirrors[player] = nil end
+	end
+end)
+
 remote.OnServerEvent:Connect(function(player, action, value)
 	if action == "ball" then
 		-- on the Rising Dragon it's the beam (hold) only
 		if validAim(value) and not Powers.DragonMouth(player.Character) then throw(player, playerCheck(player), value) end
 	elseif action == "beam" then
-		if value == false then stopBeam(player) else startBeam(player, playerCheck(player), value) end
+		if value == false then
+			stopBeam(player)
+		else
+			startBeam(player, playerCheck(player), value)
+			mirrorStart(player, value)
+		end
 	elseif action == "aim" then
 		local b = beams[player]
 		if b and not b.clash and validAim(value) then b.character:SetAttribute("PowerAim", value) end

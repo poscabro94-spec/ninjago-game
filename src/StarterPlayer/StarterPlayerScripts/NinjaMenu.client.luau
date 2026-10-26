@@ -1,9 +1,9 @@
--- NinjaMenu v1.9  (LocalScript in StarterPlayerScripts)
+-- NinjaMenu v2.0  (LocalScript in StarterPlayerScripts)
 -- The MENU button (bottom left, or M) opens a panel: pick your character (NinjaRoster), switch
 -- Golden Weapons on and off (several at once), spawn the Tornado of Creation crew as bots and
 -- training dummies (normal / infinite HP), and Duels: two NPCs clashing beams (you pick who
--- wins) or an NPC that fights you. Dragons: pick the bots that do the Rising Dragon with you (to
--- try the dragon merge on your own).
+-- wins) or an NPC that fights you. Crew: your all-in-one bots (Tornado of Creation, the Rising
+-- Dragon + merges with you), each set to help or stay on the ground.
 -- Cards show live 3D previews: your own avatar in each ninja's colours, and the weapon models
 -- from ReplicatedStorage. NinjaMenuServer does the actual change.
 
@@ -657,58 +657,82 @@ label({ Position = UDim2.fromOffset(0, 330), Size = UDim2.new(1, 0, 0, 40), Text
 	Text = "Beam them back to clash, then mash F. The loser gets hit by both elements. Remove Bots (Bots page) clears them." }).Parent = duelPanel
 
 ----------------------------------------------------------------------------------------
--- Dragons page: pick the bots that ride dragons with you (up to 5: 6 dragons in a merge)
+-- Crew page: your all-in-one bots (up to 5). Tap one to cycle it: off -> helps (does the dragon +
+-- merges with you) -> stays (stays on the ground) -> off. Every change happens straight away.
+-- All of them join your Tornado of Creation.
 ----------------------------------------------------------------------------------------
 
 local crewPanel = new("Frame", { Position = UDim2.fromOffset(28, 14), Size = UDim2.new(1, -46, 1, -48), BackgroundTransparency = 1,
 	Visible = false, ZIndex = 2 })
 crewPanel.Parent = content
-sectionTitle(0, "Dragon Crew", crewPanel)
+sectionTitle(0, "Your Crew", crewPanel)
 label({ Position = UDim2.fromOffset(0, 30), Size = UDim2.new(1, 0, 0, 40), TextWrapped = true, FontFace = SMALL, TextSize = 14,
 	TextColor3 = MUTED, TextXAlignment = Enum.TextXAlignment.Left, Stroke = 1, ZIndex = 3,
-	Text = "Pick who flies with you (up to 5). They stand spread out round you; press R and they do the Rising Dragon too. Once you're all up, press G to merge." }).Parent = crewPanel
-local crewPicked = { Fire = true, Lightning = true }
+	Text = "Tap a ninja: HELPS = rises on a dragon with you (R) and joins your merges (G). STAYS = stays on the ground. Everyone joins your Tornado of Creation (T)." }).Parent = crewPanel
+local crewState = {} -- [element] = "help" | "stay" | nil
 local crewChips = {}
+local STATE_TEXT = { help = "HELPS", stay = "STAYS" }
+local function sendCrew()
+	local list = {}
+	for _, el in ipairs(DUEL_ELEMENTS) do
+		if crewState[el] then table.insert(list, el .. "=" .. crewState[el]) end
+	end
+	remote:FireServer("crew", table.concat(list, ","))
+end
 local function paintCrew()
 	for el, c in pairs(crewChips) do
-		c.button.BackgroundColor3 = crewPicked[el] and INK or PILL
-		c.stroke.Transparency = crewPicked[el] and 0 or 1
+		local st = crewState[el]
+		c.button.BackgroundColor3 = st == "help" and INK or (st == "stay" and Color3.fromRGB(45, 45, 55) or PILL)
+		c.stroke.Transparency = st and 0 or 1
+		c.stroke.Color = st == "stay" and Color3.fromRGB(150, 150, 160) or RED
+		c.state.Text = STATE_TEXT[st] or "off"
+		c.state.TextColor3 = st == "help" and RED or MUTED
 	end
 end
 for i, el in ipairs(DUEL_ELEMENTS) do
 	local stroke = outline(RED, 2, 1)
-	local button = new("TextButton", { Position = UDim2.fromOffset((i - 1) % 3 * 128, 84 + math.floor((i - 1) / 3) * 46),
-		Size = UDim2.fromOffset(120, 38), BackgroundColor3 = PILL, Text = "", AutoButtonColor = false, ZIndex = 3 }, {
-		round(), stroke,
-		label({ Size = UDim2.fromScale(1, 1), Text = el, FontFace = LABEL, TextSize = 16,
+	local state = label({ Position = UDim2.new(0, 0, 0.5, 0), Size = UDim2.new(1, 0, 0.5, -2), Text = "off", FontFace = SMALL,
+		TextSize = 12, TextColor3 = MUTED, Stroke = 1, ZIndex = 4 })
+	local button = new("TextButton", { Position = UDim2.fromOffset((i - 1) % 3 * 138, 84 + math.floor((i - 1) / 3) * 58),
+		Size = UDim2.fromOffset(130, 50), BackgroundColor3 = PILL, Text = "", AutoButtonColor = false, ZIndex = 3 }, {
+		round(), stroke, state,
+		label({ Position = UDim2.fromOffset(0, 3), Size = UDim2.new(1, 0, 0.5, 0), Text = el, FontFace = LABEL, TextSize = 16,
 			TextColor3 = ELEMENT_COLORS[el] or Color3.new(1, 1, 1), Stroke = 1, ZIndex = 4 }),
 	})
 	button.Activated:Connect(function()
 		local count = 0
-		for _, on in pairs(crewPicked) do if on then count += 1 end end
-		if crewPicked[el] then
-			crewPicked[el] = nil
-		elseif count < 5 then
-			crewPicked[el] = true
+		for _, st in pairs(crewState) do if st then count += 1 end end
+		local st = crewState[el]
+		if st == nil then
+			if count >= 5 then return end -- (6 dragons in a merge: you + 5)
+			crewState[el] = "help"
+		elseif st == "help" then
+			crewState[el] = "stay"
+		else
+			crewState[el] = nil
 		end
 		paintCrew()
+		sendCrew()
 	end)
 	button.Parent = crewPanel
-	crewChips[el] = { button = button, stroke = stroke }
+	crewChips[el] = { button = button, stroke = stroke, state = state }
 end
 paintCrew()
-bigButton(0, 190, "SPAWN CREW", function()
-	local list = {}
+bigButton(0, 212, "ALL HELP", function()
 	for _, el in ipairs(DUEL_ELEMENTS) do
-		if crewPicked[el] then table.insert(list, el) end
+		if crewState[el] then crewState[el] = "help" end
 	end
-	remote:FireServer("crew", table.concat(list, ","))
-	setOpen(false)
+	paintCrew()
+	sendCrew()
 end, crewPanel)
-bigButton(184, 190, "REMOVE CREW", function() remote:FireServer("crew", "") end, crewPanel)
-label({ Position = UDim2.fromOffset(0, 246), Size = UDim2.new(1, 0, 0, 60), TextWrapped = true, FontFace = SMALL, TextSize = 14,
+bigButton(184, 212, "REMOVE CREW", function()
+	table.clear(crewState)
+	paintCrew()
+	sendCrew()
+end, crewPanel)
+label({ Position = UDim2.fromOffset(0, 266), Size = UDim2.new(1, 0, 0, 60), TextWrapped = true, FontFace = SMALL, TextSize = 14,
 	TextColor3 = MUTED, TextXAlignment = Enum.TextXAlignment.Left, Stroke = 1, ZIndex = 3,
-	Text = "In a merge whoever pressed G steers with the camera. It flies until it crashes into something (that breaks Shatterspin too). G again breaks away." }).Parent = crewPanel
+	Text = "In a merge, hold left click: every dragon breathes its power at once. Whoever pressed G steers with the camera; C locks on. It flies until it crashes into something." }).Parent = crewPanel
 
 -- tab pills along the top (one per page for now, the bar is ready for more)
 local function tab(text, selected)
@@ -728,7 +752,7 @@ local pages = {
 	{ name = "Weapons", icon = bladesIcon, tabs = { "Golden Weapons" }, grid = weaponGrid },
 	{ name = "Bots", icon = tornadoIcon, tabs = { "Bots & Dummies" }, grid = botGrid },
 	{ name = "Duels", icon = clashIcon, tabs = { "Duels" }, grid = duelPanel },
-	{ name = "Dragons", icon = tornadoIcon, tabs = { "Dragon Crew" }, grid = crewPanel },
+	{ name = "Crew", icon = ninjaIcon, tabs = { "All-in-One Crew" }, grid = crewPanel },
 }
 local sideItems = {}
 

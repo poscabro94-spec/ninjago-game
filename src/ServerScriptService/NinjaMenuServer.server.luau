@@ -1,4 +1,4 @@
--- NinjaMenuServer v1.5  (Script in ServerScriptService)
+-- NinjaMenuServer v1.6  (Script in ServerScriptService)
 -- What the menu (NinjaMenu) asks for:
 --   "character", name  -> become that ninja (element + look), "You" = back to your own avatar
 --   "weapon", kind     -> add / remove that Golden Weapon ("All", "None" too). The list is the
@@ -7,7 +7,9 @@
 --   "bots", "creation" -> the other three Tornado of Creation ninja as bots around you
 --   "bots", "dummy" / "dummyInf" -> a training dummy (normal / infinite HP) in front of you
 --   "bots", "shatter"  -> a bot Shatterspinning in a circle in front of you (practise the counter)
---   "crew", "Fire,Lightning" -> those bots ride dragons with you (so you can merge on your own)
+--   "crew", "Fire=help,Lightning=stay" -> your all-in-one crew (DragonMergeServer.setCrew): they
+--                         join your Tornado of Creation; "help" ones do the dragon + merges with
+--                         you, "stay" ones stay on the ground. Sent again whenever you change it
 --   "bots", "remove"   -> your bots and dummies go away
 -- Your look stays when you respawn.
 
@@ -128,7 +130,11 @@ end
 
 local function removeCrew(player)
 	for _, bot in ipairs(CollectionService:GetTagged("CreationCrew")) do
-		if bot:GetAttribute("CrewOwner") == player.UserId and not Creation.busy[bot] then bot:Destroy() end
+		-- (not your all-in-one crew: that's DragonMergeServer's)
+		if bot:GetAttribute("CrewOwner") == player.UserId and not Creation.busy[bot]
+			and not CollectionService:HasTag(bot, "DragonCrew") then
+			bot:Destroy()
+		end
 	end
 end
 
@@ -233,14 +239,12 @@ remote.OnServerEvent:Connect(function(player, action, value)
 	elseif action == "weapon" then
 		pickWeapon(player, value)
 	elseif action == "crew" then
-		local list = string.split(value, ",")
-		local n = require(script.Parent:WaitForChild("DragonMergeServer")).spawnCrew(player, list)
-		if n > 0 then
-			notify(player, ("Dragon crew (%d): press %s to ride, wait for them to rise, then %s to merge"):format(n,
-				Config.DragonKey and Config.DragonKey.Name or "R", Config.MergeKey and Config.MergeKey.Name or "G"))
-		else
-			notify(player, "Dragon crew removed")
+		local spec = {}
+		for _, item in ipairs(string.split(value, ",")) do
+			local el, role = item:match("^(%a+)=(%a+)$")
+			if el then table.insert(spec, { el, role }) end
 		end
+		require(script.Parent:WaitForChild("DragonMergeServer")).setCrew(player, spec)
 	elseif action == "bots" then
 		if value == "creation" then
 			spawnCrew(player)

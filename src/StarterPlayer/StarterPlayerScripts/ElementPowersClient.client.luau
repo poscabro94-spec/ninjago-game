@@ -1,4 +1,4 @@
--- ElementPowersClient v3.3  (LocalScript in StarterPlayerScripts)
+-- ElementPowersClient v3.4  (LocalScript in StarterPlayerScripts)
 -- Your elemental power button (empty hands, any element): tap left click = the shot combo, hold
 -- left click = beam. In a beam clash: mash F (bar at the bottom shows who's winning).
 -- Turns you toward where you aim. Draws the effects for
@@ -42,7 +42,7 @@ local function canUse()
 	if not hum or hum.Health <= 0 or character:FindFirstChildOfClass("Tool") then return false end
 	local dragon = character:GetAttribute("DragonPhase") -- (on the Rising Dragon: out of its mouth)
 	if character:GetAttribute("SpinjitzuActive") or character:GetAttribute("CreationPhase")
-		or (dragon and dragon ~= "rise" and dragon ~= "fly") then
+		or (dragon and dragon ~= "rise" and dragon ~= "fly" and dragon ~= "merge") then
 		return false
 	end
 	return Powers.ByElement[player:GetAttribute("SpinjitzuElement") or Config.Element] ~= nil

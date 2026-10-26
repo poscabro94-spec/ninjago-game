@@ -1,4 +1,4 @@
--- ElementPowers v3.2  (ModuleScript in ReplicatedStorage)
+-- ElementPowers v3.3  (ModuleScript in ReplicatedStorage)
 -- Elemental powers, used with empty hands (no Golden Weapon out): all six elements.
 --   tap left click:    a shot from the right hand -> the left hand -> a big one from both hands
 --   hold left click:   both hands out, a beam from each meets in front of you and one big beam
@@ -298,7 +298,7 @@ end
 local DragonModel, DragonNeck -- (loaded the first time they're needed; false = missing)
 function Powers.DragonMouth(character)
 	local phase = character and character:GetAttribute("DragonPhase")
-	if phase ~= "rise" and phase ~= "fly" then return nil end
+	if phase ~= "rise" and phase ~= "fly" and phase ~= "merge" then return nil end
 	local root = character:FindFirstChild("HumanoidRootPart")
 	if not root then return nil end
 	if DragonModel == nil then
@@ -318,7 +318,7 @@ function Powers.DragonMouth(character)
 	local okS, s = pcall(function() return character:GetScale() end)
 	local scale = (okS and s or 1) * (okC and Config.DragonScale or 1)
 	local aim = character:GetAttribute("PowerBeam") and character:GetAttribute("PowerAim")
-	local center = DragonNeck.Center(phase == "fly" and 1 or 0)
+	local center = DragonNeck.Center((phase == "fly" or phase == "merge") and 1 or 0)
 	local look = typeof(aim) == "Vector3" and DragonNeck.Clamp(DragonNeck.LookAt(DragonModel, root.CFrame, scale, aim), center) or center
 	return root.CFrame:PointToWorldSpace(DragonNeck.Mouth(DragonModel, look) * scale)
 end
