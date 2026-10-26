@@ -1,4 +1,4 @@
--- SpinjitzuDragon v13.1  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuDragon v14.0  (ModuleScript in ReplicatedStorage)
 -- Elemental dragon that appears behind the character after Spinjitzu (Rising Dragon), built from
 -- plain parts like the show's energy dragons: solid-looking panels in the element colour with thin
 -- glowing outlines. One tall column behind you: a cap-shaped faceted head on top (V seams down
@@ -188,7 +188,7 @@ function Dragon:_add(root, className, cf, size, color, base, material)
 	return p
 end
 
--- a piece from DragonModel: solid-looking facets (a touch see-through), thin glowing outlines,
+-- a piece from DragonModel: solid facets (see-through ones show the seams inside), thin glowing outlines,
 -- white glow blocks (eyes, inside the mouth)
 function Dragon:_facets(root, data, scale, color)
 	local tr = data.tris
@@ -198,7 +198,7 @@ function Dragon:_facets(root, data, scale, color)
 		local c = Vector3.new(tr[i + 6], tr[i + 7], tr[i + 8]) * scale
 		if (b - a):Cross(c - a).Magnitude > 1e-6 then
 			for _, w in ipairs(triangle(a, b, c, 0.05 * scale)) do
-				self:_add(root, "WedgePart", w[1], w[2], color or self.plateCol, 0.12, Enum.Material.SmoothPlastic)
+				self:_add(root, "WedgePart", w[1], w[2], color or self.plateCol, 0, Enum.Material.SmoothPlastic)
 			end
 		end
 	end
@@ -236,7 +236,7 @@ function Dragon:_buildBody()
 	glow.Parent = self.head
 	self.headLight = make("PointLight", { Color = self.coreCol, Brightness = 1, Range = 10 * sc, Shadows = false }, glow)
 	-- wings (the same part both sides; the left one is turned round when it's placed)
-	self.wings = {}
+	self.wings, self.drips = {}, {}
 	for _, side in ipairs({ 1, -1 }) do
 		local wing = self:_piece("Wing")
 		self:_facets(wing, M.Wing, ws, self.wingCol)
@@ -246,18 +246,18 @@ function Dragon:_buildBody()
 			a.Parent = wing
 			return a
 		end
-		-- long drips of energy hanging off the wing
+		-- long drips of energy hanging straight down off the wing (the bottom end is placed each frame)
 		for _, name in ipairs(M.WingDrips) do
-			self:_emitter(point(name), {
-				Texture = TEX_SPARK, Color = ColorSequence.new(self.edgeCol, self.glowCol), LightEmission = 1, Brightness = 3,
-				Orientation = Enum.ParticleOrientation.VelocityParallel,
-				Size = NumberSequence.new({ kp(0, 0.14 * sc), kp(1, 0.08 * sc) }),
-				Squash = NumberSequence.new(6),
-				Transparency = NumberSequence.new({ kp(0, 0.1), kp(0.8, 0.35), kp(1, 1) }),
-				Lifetime = NumberRange.new(0.7, 1.0), Rate = 20, Speed = NumberRange.new(6, 9),
-				Acceleration = Vector3.new(0, -40, 0), EmissionDirection = Enum.NormalId.Bottom,
-				SpreadAngle = Vector2.new(3, 3),
-			})
+			local top = point(name)
+			local bottom = Instance.new("Attachment")
+			bottom.Parent = self.anchor
+			local beam = make("Beam", {
+				Attachment0 = top, Attachment1 = bottom, FaceCamera = true, Segments = 1,
+				LightEmission = 0.8, LightInfluence = 0, Brightness = 2,
+				Width0 = 0.16 * sc, Width1 = 0.04 * sc, Color = ColorSequence.new(self.edgeCol, self.plateCol),
+				Transparency = NumberSequence.new(1),
+			}, top)
+			table.insert(self.drips, { top = top, bottom = bottom, beam = beam, len = (3.5 + math.random() * 2) * sc, phase = math.random() * 6 })
 		end
 		self.wings[side] = wing
 	end
@@ -274,6 +274,19 @@ function Dragon:_buildBody()
 		Transparency = NumberSequence.new({ kp(0, 0.1), kp(0.7, 0.3), kp(1, 1) }),
 		Lifetime = NumberRange.new(0.3, 0.55), Rate = 30, Speed = NumberRange.new(22 * sc, 40 * sc),
 		SpreadAngle = Vector2.new(180, 180), Drag = 2,
+	})
+	-- streaks raining down / spraying out below it
+	local below = Instance.new("Attachment")
+	below.Position = Vector3.new(0, -1.5 * sc, Model.NeckTop.Z * sc)
+	below.Parent = self.anchor
+	self:_emitter(below, {
+		Texture = TEX_SPARK, Color = ColorSequence.new(self.edgeCol, self.plateCol), LightEmission = 1, Brightness = 3,
+		Orientation = Enum.ParticleOrientation.VelocityParallel,
+		Size = NumberSequence.new({ kp(0, 0.3 * sc), kp(1, 0.1 * sc) }),
+		Squash = NumberSequence.new(3),
+		Transparency = NumberSequence.new({ kp(0, 0.1), kp(0.7, 0.4), kp(1, 1) }),
+		Lifetime = NumberRange.new(0.5, 0.8), Rate = 45, Speed = NumberRange.new(16 * sc, 28 * sc),
+		EmissionDirection = Enum.NormalId.Bottom, SpreadAngle = Vector2.new(35, 35), Drag = 1,
 	})
 	-- rising: a bright column of energy below you
 	local top, bottom = Instance.new("Attachment"), Instance.new("Attachment")
@@ -329,10 +342,10 @@ function Dragon:_buildAura()
 	att.Parent = self.anchor
 	self.aura = self:_emitter(att, {
 		Texture = self.kind == "fire" and TEX_FIRE or TEX_SPARK,
-		Color = ColorSequence.new(self.flakeCol, self.flakeDark),
+		Color = ColorSequence.new(self.hi, self.flakeCol),
 		LightEmission = 1, Brightness = 3,
-		Size = NumberSequence.new({ kp(0, 0.6 * sc), kp(1, 0.15 * sc) }),
-		Lifetime = NumberRange.new(0.6, 1.2), Rate = 10, Speed = NumberRange.new(4 * sc, 9 * sc),
+		Size = NumberSequence.new({ kp(0, 0.4 * sc), kp(1, 0.1 * sc) }),
+		Lifetime = NumberRange.new(0.4, 0.9), Rate = 22, Speed = NumberRange.new(3 * sc, 8 * sc),
 		SpreadAngle = Vector2.new(180, 180), Drag = 2, Rotation = NumberRange.new(0, 360), RotSpeed = NumberRange.new(-200, 200),
 	})
 	self.light = make("PointLight", { Color = self.glowCol, Brightness = 3, Range = 22 * sc, Shadows = false }, att)
@@ -460,6 +473,15 @@ function Dragon:Update(dt)
 	local parts, cfs = {}, {} -- moved together with one BulkMoveTo
 	self:_placeBody(rootCF, flap, effort, beat, parts, cfs)
 	workspace:BulkMoveTo(parts, cfs, Enum.BulkMoveMode.FireCFrameChanged)
+	-- drips hang straight down (world down), stretching a little
+	for _, d in ipairs(self.drips) do
+		local len = d.len * (0.85 + 0.15 * math.sin(t * 3 + d.phase))
+		d.bottom.WorldPosition = d.top.WorldPosition - Vector3.new(0, len, 0)
+		if a ~= d.a then
+			d.a = a
+			d.beam.Transparency = NumberSequence.new({ kp(0, 1 - 0.85 * a), kp(1, 1) })
+		end
+	end
 
 	if self.light then
 		self.light.Brightness = 1.2 * a * (0.85 + 0.15 * math.sin(t * 7))

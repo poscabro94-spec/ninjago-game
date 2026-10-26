@@ -31,22 +31,23 @@ def mirrored(pts):
 # a big white glow inside. Head space: origin at the neck joint, -Z = snout, +Y = up (the game
 # turns it to point up the column).
 # ---------------------------------------------------------------------------------------------
-HEAD_RINGS = [  # z, half width, top, bottom  (back -> snout). The back is the widest: it sits on
-    (0.35, 1.35, 0.95, -0.85),           # the neck like a cap with a flat ledge
-    (-0.6, 1.3, 1.05, -0.8),
-    (-1.7, 1.15, 0.95, -0.65),
-    (-2.7, 0.85, 0.75, -0.45),
-    (-3.4, 0.5, 0.5, -0.3),
+SKULL = [  # z, half width, top, bottom  (back -> snout). The back of the skull is the widest:
+    (0.4, 1.25, 0.8, -0.35),    # it sits on the neck like a cap
+    (-0.5, 1.3, 0.95, -0.35),
+    (-1.6, 1.1, 0.85, -0.3),
+    (-2.7, 0.85, 0.65, -0.25),
+    (-3.6, 0.6, 0.45, -0.2),
 ]
-HEAD_TIP = V(0, 0.15, -3.85)
-JAW_RINGS = [(0.0, 1.05, -0.75, -1.15), (-1.6, 0.85, -0.6, -0.95), (-2.9, 0.45, -0.4, -0.65)]
-JAW_TIP = V(0, -0.5, -3.3)
-JAW_OPEN = 0.3      # how far the jaw hangs open (radians), hinged at the back
+SKULL_TIP = V(0, 0.1, -4.1)
+JAW = [(0.3, 1.1, -0.4, -0.95), (-1.2, 0.95, -0.4, -0.85), (-2.6, 0.7, -0.4, -0.7), (-3.5, 0.45, -0.4, -0.6)]
+JAW_TIP = V(0, -0.45, -3.9)
+JAW_HINGE = V(0, -0.4, 0.3)
+JAW_OPEN = 0.6      # the mouth is wide open (radians)
 
 
 def head_ring(z, w, top, bot, chevron=0.3):
     """ridge vertex set back (so the seams on top make V's down the back of the head)"""
-    right = [(0.55 * w, top, 0.12), (w, 0.35 * top, 0.0), (0.9 * w, 0.4 * bot, 0.0), (0.5 * w, bot, 0.0)]
+    right = [(0.55 * w, top, 0.12), (w, 0.35 * top + 0.2 * bot, 0.0), (0.9 * w, bot + 0.15 * (top - bot), 0.0), (0.5 * w, bot, 0.0)]
     pts = [V(0, top + 0.12, z + chevron)] + [V(x, y, z + dz) for x, y, dz in right]
     pts += [V(0, bot - 0.04, z)] + [V(-x, y, z + dz) for x, y, dz in reversed(right)]
     return pts
@@ -75,24 +76,32 @@ def loft_piece(p, rings, tip, back=None, th=0.05):
             p.tri(b, a, back)
 
 
-def build_head():
-    p = Piece()
-    loft_piece(p, [head_ring(*r) for r in HEAD_RINGS], HEAD_TIP, back=V(0, 0.05, 0.45))
-    # lower jaw, hanging open (hinge at the back of the head)
-    hinge = V(0, -0.75, 0.2)
+def _jaw_turn():
     c, s = math.cos(-JAW_OPEN), math.sin(-JAW_OPEN)
     R = np.array([[1, 0, 0], [0, c, -s], [0, s, c]])
-    turn = lambda v: hinge + R @ (v - hinge)
-    jaw = [[turn(q) for q in head_ring(z, w, top, bot, chevron=0.0)] for z, w, top, bot in JAW_RINGS]
-    loft_piece(p, jaw, turn(JAW_TIP), back=turn(V(0, -0.95, 0.1)))
-    # brow plates over the eyes, sticking out a little at the sides
+    return lambda v: JAW_HINGE + R @ (v - JAW_HINGE)
+
+
+def build_head():
+    p = Piece()
+    loft_piece(p, [head_ring(*r) for r in SKULL], SKULL_TIP, back=V(0, 0.1, 0.55))
+    # lower jaw, wide open
+    turn = _jaw_turn()
+    jaw = [[turn(q) for q in head_ring(z, w, top, bot, chevron=0.0)] for z, w, top, bot in JAW]
+    loft_piece(p, jaw, turn(JAW_TIP), back=turn(V(0, -0.7, 0.45)))
+    # brow plates over the eyes and stubby horns at the back corners
     for sx in (1, -1):
-        a, b, tip = V(sx * 1.05, 0.75, -0.3), V(sx * 1.0, 0.7, -1.6), V(sx * 1.55, 0.95, -0.45)
+        a, b, tip = V(sx * 1.0, 0.7, -0.9), V(sx * 0.95, 0.6, -2.1), V(sx * 1.45, 0.9, -1.05)
         p.tri(a, b, tip); p.edge(a, tip, 0.05); p.edge(b, tip, 0.05); p.edge(a, b, 0.05)
-    # white light inside the mouth + eyes
-    p.glow.append((V(0, -0.55, -1.7), V(1.1, 0.35, 2.4), V(-0.15, 0, 0), 0))
+        a, b, tip = V(sx * 1.15, 0.55, 0.3), V(sx * 1.2, 0.0, 0.25), V(sx * 1.65, 0.55, 1.05)
+        p.tri(a, b, tip); p.edge(a, tip, 0.05); p.edge(b, tip, 0.05)
+    # white light filling the open mouth (roof + floor), and the eyes
+    p.glow.append((V(0, -0.38, -1.8), V(1.2, 0.08, 3.2), V(0, 0, 0), 0))
+    jc = turn(V(0, -0.42, -1.6))
+    p.glow.append((jc, V(1.0, 0.08, 3.0), V(-JAW_OPEN, 0, 0), 0))
+    p.glow.append((V(0, -0.55, -1.5), V(0.7, 0.35, 2.0), V(-JAW_OPEN / 2, 0, 0), 0.4))   # the glow between
     for sx in (1, -1):
-        p.glow.append((V(sx * 1.18, 0.4, -1.0), V(0.1, 0.15, 0.6), V(0, sx * 0.3, sx * 0.15), 0))
+        p.glow.append((V(sx * 1.08, 0.38, -1.5), V(0.1, 0.16, 0.65), V(0, sx * 0.3, sx * 0.15), 0))
     return p
 
 
@@ -100,20 +109,27 @@ def build_head():
 # body: chevron roof plates down the column (root space; the column runs along Y at z = Z0)
 # ---------------------------------------------------------------------------------------------
 Z0 = 0.95
-SEGMENTS = [  # centre y, half width, half height  (from the head down to the tail; small gaps
-    (3.85, 1.0, 0.36), (3.05, 1.05, 0.36), (2.25, 1.1, 0.36),          # between them so nothing
-    (1.45, 1.4, 0.38), (0.6, 1.45, 0.38), (-0.25, 1.35, 0.38), (-1.1, 1.2, 0.38),  # overlaps)
-    (-1.95, 1.0, 0.38), (-2.8, 0.8, 0.38), (-3.6, 0.62, 0.36), (-4.35, 0.45, 0.33),
+CHEVRON = 0.5   # how far every plate's V dips (the same for all, so the gaps stay even)
+GAP = 0.09
+SIZES = [  # half width, half height  (from the head down to the tail)
+    (0.75, 0.32), (0.95, 0.34), (1.1, 0.34),                   # neck (the first one tucks under the head)
+    (1.4, 0.38), (1.45, 0.38), (1.35, 0.38), (1.2, 0.38),       # body
+    (1.0, 0.36), (0.8, 0.34), (0.62, 0.32), (0.46, 0.3),        # tail
 ]
-TAIL_TIP = V(0, -5.9, Z0 + 0.1)
-NECK_TOP = V(0, 4.9, Z0)  # where the head sits (head space origin goes here)
+SEGMENTS = []
+_y = 4.05
+for _w, _a in SIZES:
+    SEGMENTS.append((_y - _a, _w, _a))
+    _y -= 2 * _a + GAP
+TAIL_TIP = V(0, _y - 1.4, Z0 + 0.1)
+NECK_TOP = V(0, 4.65, Z0 + 0.05)  # where the head sits (head space origin goes here)
 
 
 def build_body():
     p = Piece()
     for y, w, a in SEGMENTS:
-        c = 0.28 * w          # how far the chevron dips (points down the tail)
-        r = 0.3 + 0.1 * w     # ridge height (away from your back)
+        c = CHEVRON           # how far the chevron dips (points down the tail)
+        r = 0.42              # ridge height (away from your back)
         tl, tr = V(-w, y + a, Z0), V(w, y + a, Z0)
         bl, br = V(-w, y - a, Z0), V(w, y - a, Z0)
         rt, rb = V(0, y + a - c, Z0 + r), V(0, y - a - c, Z0 + r)
@@ -123,7 +139,7 @@ def build_body():
             p.edge(e[0], e[1], 0.05)
     # tail tip
     y, w, a = SEGMENTS[-1]
-    bl, br, rb = V(-w, y - a, Z0), V(w, y - a, Z0), V(0, y - a - 0.28 * w, Z0 + 0.3 + 0.1 * w)
+    bl, br, rb = V(-w, y - a, Z0), V(w, y - a, Z0), V(0, y - a - CHEVRON, Z0 + 0.42)
     p.tri(bl, rb, TAIL_TIP); p.tri(rb, br, TAIL_TIP)
     for e in ((bl, TAIL_TIP), (br, TAIL_TIP), (rb, TAIL_TIP)):
         p.edge(e[0], e[1], 0.05)
@@ -140,11 +156,11 @@ def _arc(a, b, bow, n=5):
 
 
 WP = {
-    "S": V(0, 0, 0), "E": V(0.75, 0.35, 0), "N": V(1.25, -0.15, 0), "K": V(1.85, 0.42, 0), "W": V(5.9, 0.95, 0),
-    "Wx": V(6.35, 1.2, 0), "Tb": V(5.65, -2.7, 0), "P": V(3.3, -2.45, 0), "B": V(0.2, -2.0, 0),
+    "S": V(0, 0, 0), "E": V(0.75, 0.4, 0), "N": V(1.25, -0.2, 0), "K": V(1.85, 0.45, 0), "W": V(5.9, 0.95, 0),
+    "Wx": V(6.45, 1.3, 0), "Tb": V(5.55, -2.95, 0), "P": V(3.2, -2.75, 0), "B": V(0.25, -1.7, 0),
 }
-SCALLOP1 = _arc(WP["Tb"], WP["P"], 0.75)
-SCALLOP2 = _arc(WP["P"], WP["B"], 0.6)
+SCALLOP1 = _arc(WP["Tb"], WP["P"], 1.05)
+SCALLOP2 = _arc(WP["P"], WP["B"], 0.85)
 
 
 def ear_clip(poly):
