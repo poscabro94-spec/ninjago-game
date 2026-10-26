@@ -1,4 +1,4 @@
--- GoldenWeapons v6.0  (ModuleScript in ReplicatedStorage)
+-- GoldenWeapons v6.1  (ModuleScript in ReplicatedStorage)
 -- Shared settings + the client side of the Golden Weapons. Each element has its own weapon
 -- (ByElement); switching element (E) swaps it.
 -- Nunchucks of Lightning (moves copied from the reference video):
@@ -325,7 +325,7 @@ local function wkey(e, grip, dir, edgeWay, waist)
 	return { e = e, cf = CFrame.fromMatrix(grip, d:Cross(edge), d), waist = waist or CFrame.identity }
 end
 
-S.Idle = wkey(0, V(0.05, -0.35, -1.0), V(0.05, 0.75, -0.65), V(0, -0.65, -0.75)) -- blade up and forward
+S.Idle = wkey(0, V(0.05, -0.15, -0.95), V(-0.3, 0.9, -0.3), V(-0.2, -0.3, -1)) -- Kai: hands at the chest, blade up
 local chopDown = { V(0.05, -0.55, -1.15), V(0, -0.35, -0.94), V(0, -1, 0.3) }
 S.Moves = {
 	slash = { -- right -> left
@@ -391,9 +391,22 @@ end
 
 local rigs = setmetatable({}, { __mode = "k" }) -- [character] = { Right = rig, Left = rig }
 
+-- a joint's two frames: Motor6D (C0, C1) or AnimationConstraint (newer rigs: its attachments)
+local function jointFrames(character, name)
+	for _, m in ipairs(character:GetDescendants()) do
+		if m.Name == name then
+			if m:IsA("Motor6D") then return { m.C0, m.C1, m } end
+			if m:IsA("AnimationConstraint") and m.Attachment0 and m.Attachment1 then
+				return { m.Attachment0.CFrame, m.Attachment1.CFrame, m }
+			end
+		end
+	end
+	return nil
+end
+
 -- a joint's child part relative to its parent, with the pose rotation applied
-local function link(m, rot)
-	return CFrame.new(m.C0.Position) * rot * m.C0.Rotation * m.C1:Inverse()
+local function link(j, rot)
+	return CFrame.new(j[1].Position) * rot * j[1].Rotation * j[2]:Inverse()
 end
 
 local function armRig(character, side)
@@ -403,16 +416,13 @@ local function armRig(character, side)
 		rigs[character] = cache
 	end
 	local r = cache[side]
-	if r and r.sh.Parent and r.el.Parent and r.wr.Parent then return r end
-	local ua = character:FindFirstChild(side .. "UpperArm")
-	local la = character:FindFirstChild(side .. "LowerArm")
-	local hand = character:FindFirstChild(side .. "Hand")
-	local sh = ua and ua:FindFirstChild(side .. "Shoulder")
-	local el = la and la:FindFirstChild(side .. "Elbow")
-	local wr = hand and hand:FindFirstChild(side .. "Wrist")
-	if not (sh and el and wr and sh:IsA("Motor6D") and el:IsA("Motor6D") and wr:IsA("Motor6D")) then return nil end
-	r = { sh = sh, el = el, wr = wr, S = sh.C0.Position, A = sh.C0.Rotation * sh.C1:Inverse() }
-	r.upper = (r.A * CFrame.new(el.C0.Position)).Position -- shoulder -> elbow, before the shoulder turns
+	if r and r.sh[3].Parent and r.el[3].Parent and r.wr[3].Parent then return r end
+	local sh = jointFrames(character, side .. "Shoulder")
+	local el = jointFrames(character, side .. "Elbow")
+	local wr = jointFrames(character, side .. "Wrist")
+	if not (sh and el and wr) then return nil end
+	r = { sh = sh, el = el, wr = wr, S = sh[1].Position, A = sh[1].Rotation * sh[2]:Inverse() }
+	r.upper = (r.A * CFrame.new(el[1].Position)).Position -- shoulder -> elbow, before the shoulder turns
 	cache[side] = r
 	return r
 end
