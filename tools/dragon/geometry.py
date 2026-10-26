@@ -243,10 +243,12 @@ def build_wing():
     inner_b, outer_b = Mesh(), Mesh()
 
     def fan(m, centre, poly, shades, cs=1.0):
+        # front + back face a hair apart: Roblox can't make a mesh part with no thickness
+        f, b = V(0, 0, 0.02), V(0, 0, -0.02)
         for i in range(len(poly) - 1):
             p, q = poly[i], poly[i + 1]
-            m.tri(centre, p, q, (cs, shades[i], shades[i + 1]))
-            m.tri(centre, q, p, (cs, shades[i + 1], shades[i]))
+            m.tri(centre + f, p + f, q + f, (cs, shades[i], shades[i + 1]))
+            m.tri(centre + b, q + b, p + b, (cs, shades[i + 1], shades[i]))
 
     W = P["W"]
     # hand: wrist -> tip -> notch -> point P1 (back to the wrist)

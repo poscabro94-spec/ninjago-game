@@ -1,4 +1,4 @@
--- SpinjitzuDragon v10.0  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuDragon v10.1  (ModuleScript in ReplicatedStorage)
 -- Elemental dragon that appears behind the character after Spinjitzu (Rising Dragon): an energy
 -- dragon of glowing plates. Hovering, its plated head rears up above you on a neck of stacked
 -- plates rising from a plated chest behind your back, and the wings stand up tall in a V: bright
@@ -211,10 +211,13 @@ local function buildKit(lite)
 		local name, double = entry[1], entry[2]
 		local data = M[name]
 		if not data then error("DragonModel has no " .. name .. " (old version?)") end
+		local content = Content.fromObject(makeMesh(data, double and not lite, lite))
+		-- (no collision shape needed: the dragon never touches anything)
 		local ok, mp = pcall(function()
-			return AssetService:CreateMeshPartAsync(Content.fromObject(makeMesh(data, double and not lite, lite)))
+			return AssetService:CreateMeshPartAsync(content, { CollisionFidelity = Enum.CollisionFidelity.Box })
 		end)
-		if not ok then error(name .. ": " .. tostring(mp)) end
+		if not ok then ok, mp = pcall(function() return AssetService:CreateMeshPartAsync(content) end) end
+		if not ok or not mp then error(name .. " failed: " .. tostring(mp)) end
 		mp.Name = "Dragon" .. name
 		mp.Anchored, mp.CanCollide, mp.CanQuery, mp.CanTouch, mp.CastShadow = true, false, false, false, false
 		mp.Material = Enum.Material.Neon
