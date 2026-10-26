@@ -28,11 +28,13 @@ def piece(name, p):
                      for g in p.glow)
     gtris = [x for a, b, c in p.gtris for v in (a, b, c) for x in v]
     teeth = [x for a, b, c in p.teeth for v in (a, b, c) for x in v]
+    blocks = "\n".join('\t\t\t{ %s, %s, %s },' % (vec(c), vec(sz), vec(r)) for c, sz, r in p.blocks)
     return (f"\t{name} = {{\n\t\ttris = {{ -- x, y, z of each corner, 3 corners a triangle\n{nums(tris, 9)}\n\t\t}},\n"
             f"\t\tedges = {{ -- from x, y, z, to x, y, z, thickness\n{nums(edges, 7)}\n\t\t}},\n"
             f"\t\tglow = {{ -- centre, size, tilt, transparency, shape (block / oval)\n{glow}\n\t\t}},\n"
             f"\t\tgtris = {{ -- glowing white triangles\n{nums(gtris, 9)}\n\t\t}},\n"
-            f"\t\tteeth = {{ -- solid teeth\n{nums(teeth, 9)}\n\t\t}},\n\t}},\n")
+            f"\t\tteeth = {{ -- solid teeth\n{nums(teeth, 9)}\n\t\t}},\n"
+            f"\t\tblocks = {{ -- raised plates: centre, size, tilt (one box each)\n{blocks}\n\t\t}},\n\t}},\n")
 
 
 DRIPS = ["Wx", "Tb", "P1", "P"]
@@ -47,7 +49,7 @@ def main():
     for k in DRIPS:
         assert k in W, "wing point %s doesn't exist" % k
     pts = "\n".join("\t\t%s = %s," % (k, vec(v)) for k, v in W.items())
-    src = f'''-- DragonModel v4.2  (ModuleScript in ReplicatedStorage) -- GENERATED, don't edit by hand:
+    src = f'''-- DragonModel v4.3  (ModuleScript in ReplicatedStorage) -- GENERATED, don't edit by hand:
 -- change tools/dragon/facet.py and run build.py (python facet.py out renders it).
 -- The Rising Dragon, built from plain parts by SpinjitzuDragon: flat see-through glowing facets
 -- with thick bright outlines, one tall column behind you. Studs at DragonScale 1.

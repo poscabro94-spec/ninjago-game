@@ -1,4 +1,4 @@
--- SpinjitzuConfig v16.2  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuConfig v16.3  (ModuleScript in ReplicatedStorage)
 
 local Config = {}
 
@@ -108,13 +108,15 @@ Config.DragonBoost = 1.9        -- holding Shift while flying: this many times f
 Config.DragonFlyTime = 9        -- seconds of flight after the rise, then you dive straight down + land
 Config.DragonLockKey = Enum.KeyCode.C -- on the dragon: lock onto the Shatterspinner nearest the middle of your screen (again = let go)
 Config.DragonLockRange = 250    -- studs
--- Dragon merge (G on the dragon): 3-4 dragons close together lock into a ring and spin, flying where
--- whoever started it looks, until it crashes into something (G again = break away)
+-- Dragon merge (G on the dragon): 3-6 dragons close together lock into a ring, fly up while it starts
+-- spinning, then fly where whoever started it looks until it crashes into something (G = break away)
 Config.MergeKey = Enum.KeyCode.G
-Config.MergeRange = 60          -- studs: how close the other dragons must be
-Config.MergeSpeed = 80          -- studs/s
+Config.MergeRange = 80          -- studs: how close the other dragons must be
+Config.MergeRiseTime = 2.2      -- seconds flying straight up first
+Config.MergeRiseSpeed = 30      -- studs/s while going up
+Config.MergeSpeed = 80          -- studs/s after that
 Config.MergeTurn = 1.8          -- radians/s it can turn
-Config.MergeTime = 15           -- seconds before it falls apart on its own
+Config.MergeTime = 17           -- seconds before it falls apart on its own
 Config.MergeDamage = 70         -- the crash, to everyone within MergeBlastRadius (breaks Shatterspin too)
 Config.MergeBlastRadius = 22
 Config.MergeBreakAwayTime = 4   -- seconds you keep flying after breaking away

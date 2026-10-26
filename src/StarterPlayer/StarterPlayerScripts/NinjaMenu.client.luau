@@ -1,8 +1,9 @@
--- NinjaMenu v1.8  (LocalScript in StarterPlayerScripts)
+-- NinjaMenu v1.9  (LocalScript in StarterPlayerScripts)
 -- The MENU button (bottom left, or M) opens a panel: pick your character (NinjaRoster), switch
 -- Golden Weapons on and off (several at once), spawn the Tornado of Creation crew as bots and
 -- training dummies (normal / infinite HP), and Duels: two NPCs clashing beams (you pick who
--- wins) or an NPC that fights you.
+-- wins) or an NPC that fights you. Dragons: pick the bots that do the Rising Dragon with you (to
+-- try the dragon merge on your own).
 -- Cards show live 3D previews: your own avatar in each ninja's colours, and the weapon models
 -- from ReplicatedStorage. NinjaMenuServer does the actual change.
 
@@ -571,14 +572,7 @@ local function buildCards()
 		task.delay(0.3, function() setOpen(false) end)
 	end)
 	button.Parent = botGrid
-	button, viewport = card(5, "Dragon Crew", "merge with them")
-	showCrew(viewport, { "Fire", "Lightning" })
-	button.Activated:Connect(function()
-		remote:FireServer("bots", "dragoncrew")
-		task.delay(0.3, function() setOpen(false) end)
-	end)
-	button.Parent = botGrid
-	button, viewport, setSelected, disc = card(6, "Remove Bots", "crew, dummies, bots")
+	button, viewport, setSelected, disc = card(5, "Remove Bots", "crew, dummies, bots")
 	showNone(disc)
 	button.Activated:Connect(function() remote:FireServer("bots", "remove") end)
 	button.Parent = botGrid
@@ -624,20 +618,20 @@ local function chipRow(y, caption, options, colors, default)
 	return function() return picked end
 end
 
-local function bigButton(x, y, text, onClick)
+local function bigButton(x, y, text, onClick, parent)
 	local b = new("TextButton", { Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(170, 40), BackgroundColor3 = RED,
 		Text = "", AutoButtonColor = false, ZIndex = 3 }, {
 		round(), outline(Color3.fromRGB(120, 0, 4), 2),
 		label({ Size = UDim2.fromScale(1, 1), Text = text, FontFace = TITLE, TextSize = 22, TextColor3 = Color3.new(1, 1, 1), ZIndex = 4 }),
 	})
 	b.Activated:Connect(onClick)
-	b.Parent = duelPanel
+	b.Parent = parent or duelPanel
 	return b
 end
 
-local function sectionTitle(y, text)
+local function sectionTitle(y, text, parent)
 	label({ Position = UDim2.fromOffset(0, y), Size = UDim2.fromOffset(400, 26), Text = text, FontFace = LABEL, TextSize = 22,
-		TextColor3 = Color3.new(1, 1, 1), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3 }).Parent = duelPanel
+		TextColor3 = Color3.new(1, 1, 1), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3 }).Parent = parent or duelPanel
 end
 
 local elementOptions = {}
@@ -662,6 +656,60 @@ label({ Position = UDim2.fromOffset(0, 330), Size = UDim2.new(1, 0, 0, 40), Text
 	TextColor3 = MUTED, TextXAlignment = Enum.TextXAlignment.Left, Stroke = 1, ZIndex = 3,
 	Text = "Beam them back to clash, then mash F. The loser gets hit by both elements. Remove Bots (Bots page) clears them." }).Parent = duelPanel
 
+----------------------------------------------------------------------------------------
+-- Dragons page: pick the bots that ride dragons with you (up to 5: 6 dragons in a merge)
+----------------------------------------------------------------------------------------
+
+local crewPanel = new("Frame", { Position = UDim2.fromOffset(28, 14), Size = UDim2.new(1, -46, 1, -48), BackgroundTransparency = 1,
+	Visible = false, ZIndex = 2 })
+crewPanel.Parent = content
+sectionTitle(0, "Dragon Crew", crewPanel)
+label({ Position = UDim2.fromOffset(0, 30), Size = UDim2.new(1, 0, 0, 40), TextWrapped = true, FontFace = SMALL, TextSize = 14,
+	TextColor3 = MUTED, TextXAlignment = Enum.TextXAlignment.Left, Stroke = 1, ZIndex = 3,
+	Text = "Pick who flies with you (up to 5). They stand spread out round you; press R and they do the Rising Dragon too. Once you're all up, press G to merge." }).Parent = crewPanel
+local crewPicked = { Fire = true, Lightning = true }
+local crewChips = {}
+local function paintCrew()
+	for el, c in pairs(crewChips) do
+		c.button.BackgroundColor3 = crewPicked[el] and INK or PILL
+		c.stroke.Transparency = crewPicked[el] and 0 or 1
+	end
+end
+for i, el in ipairs(DUEL_ELEMENTS) do
+	local stroke = outline(RED, 2, 1)
+	local button = new("TextButton", { Position = UDim2.fromOffset((i - 1) % 3 * 128, 84 + math.floor((i - 1) / 3) * 46),
+		Size = UDim2.fromOffset(120, 38), BackgroundColor3 = PILL, Text = "", AutoButtonColor = false, ZIndex = 3 }, {
+		round(), stroke,
+		label({ Size = UDim2.fromScale(1, 1), Text = el, FontFace = LABEL, TextSize = 16,
+			TextColor3 = ELEMENT_COLORS[el] or Color3.new(1, 1, 1), Stroke = 1, ZIndex = 4 }),
+	})
+	button.Activated:Connect(function()
+		local count = 0
+		for _, on in pairs(crewPicked) do if on then count += 1 end end
+		if crewPicked[el] then
+			crewPicked[el] = nil
+		elseif count < 5 then
+			crewPicked[el] = true
+		end
+		paintCrew()
+	end)
+	button.Parent = crewPanel
+	crewChips[el] = { button = button, stroke = stroke }
+end
+paintCrew()
+bigButton(0, 190, "SPAWN CREW", function()
+	local list = {}
+	for _, el in ipairs(DUEL_ELEMENTS) do
+		if crewPicked[el] then table.insert(list, el) end
+	end
+	remote:FireServer("crew", table.concat(list, ","))
+	setOpen(false)
+end, crewPanel)
+bigButton(184, 190, "REMOVE CREW", function() remote:FireServer("crew", "") end, crewPanel)
+label({ Position = UDim2.fromOffset(0, 246), Size = UDim2.new(1, 0, 0, 60), TextWrapped = true, FontFace = SMALL, TextSize = 14,
+	TextColor3 = MUTED, TextXAlignment = Enum.TextXAlignment.Left, Stroke = 1, ZIndex = 3,
+	Text = "In a merge whoever pressed G steers with the camera. It flies until it crashes into something (that breaks Shatterspin too). G again breaks away." }).Parent = crewPanel
+
 -- tab pills along the top (one per page for now, the bar is ready for more)
 local function tab(text, selected)
 	return new("TextButton", {
@@ -680,6 +728,7 @@ local pages = {
 	{ name = "Weapons", icon = bladesIcon, tabs = { "Golden Weapons" }, grid = weaponGrid },
 	{ name = "Bots", icon = tornadoIcon, tabs = { "Bots & Dummies" }, grid = botGrid },
 	{ name = "Duels", icon = clashIcon, tabs = { "Duels" }, grid = duelPanel },
+	{ name = "Dragons", icon = tornadoIcon, tabs = { "Dragon Crew" }, grid = crewPanel },
 }
 local sideItems = {}
 
@@ -706,7 +755,7 @@ for i, page in ipairs(pages) do
 	icon.Position = UDim2.new(0.5, 0, 0, 4)
 	local text = label({ AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 68), Size = UDim2.new(1, 0, 0, 24),
 		Text = page.name, FontFace = LABEL, TextSize = 20, TextColor3 = MUTED })
-	local item = new("TextButton", { LayoutOrder = i, Size = UDim2.fromOffset(SIDEBAR_W, 104), BackgroundTransparency = 1,
+	local item = new("TextButton", { LayoutOrder = i, Size = UDim2.fromOffset(SIDEBAR_W, 98), BackgroundTransparency = 1,
 		Text = "", AutoButtonColor = false }, { scale, icon, text })
 	item.Activated:Connect(function() showPage(page) end)
 	item.Parent = sidebar

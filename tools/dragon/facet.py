@@ -16,6 +16,7 @@ class Piece:
         self.tris, self.edges, self.glow = [], [], []
         self.gtris = []   # glowing white triangles (the inside of the mouth)
         self.teeth = []   # solid teeth (their own colour)
+        self.blocks = []  # raised plates: one box part each (centre, size, tilt)
 
     def tri(self, a, b, c):
         self.tris.append((a, b, c))
@@ -90,14 +91,9 @@ def _jaw_turn(open_=None):
     return f
 
 
-def plate(p, c, size, tilt, th=0.045):
-    """a raised block (centre, size, tilt as CFrame.Angles), filled + all 12 edges outlined"""
-    import rock
-    P = rock.corners({"c": c, "s": size, "r": tilt})
-    for i, j, k, l in [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)]:
-        p.tri(P[i], P[j], P[k]); p.tri(P[i], P[k], P[l])
-    for i, j in [(0, 1), (2, 3), (4, 5), (6, 7), (0, 2), (1, 3), (4, 6), (5, 7), (0, 4), (1, 5), (2, 6), (3, 7)]:
-        p.edge(P[i], P[j], th)
+def plate(p, c, size, tilt):
+    """a raised block (centre, size, tilt as CFrame.Angles): one box part in the game"""
+    p.blocks.append((c, size, tilt))
 
 
 def build_head(open_=None):
@@ -145,6 +141,7 @@ def build_head(open_=None):
         p.edges += [(turn(a), turn(b), th) for a, b, th in j.edges]
         p.teeth += [tuple(turn(v) for v in t) for t in j.teeth]
         p.glow += [(turn(c), sz, tilt - V(open_, 0, 0), tr, kind) for c, sz, tilt, tr, kind in j.glow]
+        p.blocks += [(turn(c), sz, tilt - V(open_, 0, 0)) for c, sz, tilt in j.blocks]
     return p
 
 
@@ -389,6 +386,10 @@ def to_mesh(piece, G, tube):
         P = rock.corners({"c": c, "s": s, "r": r})
         for i, j, k, l in [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)]:
             glow.tri(P[i], P[j], P[k]); glow.tri(P[i], P[k], P[l])
+    for c, s, r in piece.blocks:
+        P = rock.corners({"c": c, "s": s, "r": r})
+        for i, j, k, l in [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)]:
+            m.tri(P[i], P[j], P[k], 1.0); m.tri(P[i], P[k], P[l], 1.0)
     return m, hot, glow
 
 

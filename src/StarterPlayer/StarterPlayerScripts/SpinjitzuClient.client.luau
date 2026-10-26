@@ -411,8 +411,10 @@ local function dragonRefresh(character)
 	if out then
 		local d = dragons[character]
 		if not d then
-			-- (the first dragon can wait a moment for its meshes: don't start a second one meanwhile)
+			-- (it's built over a few frames: don't start a second one meanwhile; your own flight
+			-- starts straight away)
 			if creatingDragon[character] then return end
+			if character == localPlayer.Character and phase ~= "merge" then flightStart(character) end
 			creatingDragon[character] = true
 			d = Dragon.new(character,
 				character:GetAttribute("SpinjitzuColor") or Config.Color,

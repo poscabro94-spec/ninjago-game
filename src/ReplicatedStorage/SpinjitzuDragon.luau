@@ -1,4 +1,4 @@
--- SpinjitzuDragon v18.1  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuDragon v18.2  (ModuleScript in ReplicatedStorage)
 -- Elemental dragon that appears behind the character after Spinjitzu (Rising Dragon), built from
 -- plain parts like the show's energy dragons: solid-looking panels in the element colour with thin
 -- glowing outlines. One tall column behind you: a cap-shaped faceted head on top (V seams down
@@ -54,11 +54,22 @@ local function newPart(className, parent, props)
 	p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch, p.CastShadow = true, false, false, false, false
 	p.Material = Enum.Material.Neon
 	p.Transparency = 1
-	for k, v in pairs(props) do
-		pcall(function() p[k] = v end)
-	end
+	for k, v in pairs(props) do p[k] = v end
 	p.Parent = parent
 	return p
+end
+
+-- building a dragon is ~1200 parts: they're made a few hundred a frame (shared by every dragon being
+-- built at once) so a crowd of dragons appearing together doesn't freeze the game
+local PARTS_PER_FRAME = 300
+local builtThisFrame = 0
+game:GetService("RunService").Heartbeat:Connect(function() builtThisFrame = 0 end)
+local function buildBudget()
+	builtThisFrame += 1
+	while builtThisFrame > PARTS_PER_FRAME do
+		task.wait()
+		builtThisFrame += 1
+	end
 end
 
 -- two wedges filling triangle a,b,c (all points in the same local space)
@@ -195,12 +206,16 @@ end
 
 -- a part on a piece at cf (piece space); base = its transparency once faded in
 function Dragon:_add(root, className, cf, size, color, base, material)
-	local p = newPart(className, self.folder, { Size = size, Color = color, Material = material or Enum.Material.Neon })
+	buildBudget()
+	local p = Instance.new(className)
+	p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch, p.CastShadow, p.Massless = false, false, false, false, false, true
+	p.Material = material or Enum.Material.Neon
+	p.Size, p.Color, p.Transparency = size, color, 1
 	p.CFrame = root.CFrame * cf
-	p.Anchored, p.Massless = false, true
 	local w = Instance.new("WeldConstraint")
 	w.Part0, w.Part1 = root, p
 	w.Parent = p
+	p.Parent = self.folder
 	self:_fadePart(p, base)
 	return p
 end
@@ -386,6 +401,11 @@ function Dragon:_facets(root, data, scale, color, bones)
 				self:_add(root, "Part", CFrame.lookAt((a + b) / 2, b), Vector3.new(th, th, (b - a).Magnitude + th), self.boneCol, 0)
 			end
 		end
+	end
+	-- raised plates: one box each
+	for _, b in ipairs(data.blocks or {}) do
+		local tilt = b[3]
+		self:_add(root, "Part", CFrame.new(b[1] * scale) * CFrame.Angles(tilt.X, tilt.Y, tilt.Z), b[2] * scale, color or self.plateCol, 0.2)
 	end
 	-- solid teeth
 	local tt = data.teeth or {}

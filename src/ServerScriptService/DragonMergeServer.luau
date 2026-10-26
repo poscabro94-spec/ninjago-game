@@ -1,12 +1,14 @@
--- DragonMergeServer v1.0  (ModuleScript in ServerScriptService)
+-- DragonMergeServer v1.1  (ModuleScript in ServerScriptService)
 -- Runs Rising Dragon merges (the shared maths + what a merge is: ReplicatedStorage.DragonMerge).
 --   request(character)  the merge key (G) on the dragon: with at least 3 dragons close together
---                       (you + other riders + your dragon crew) you all merge; in a merge, the
---                       key breaks you away (fewer than 3 left = it falls apart)
+--                       (you + other riders + your dragon crew, up to 6) you all merge: swoop
+--                       into a ring, fly straight up while the spin builds, then off where the
+--                       leader looks. In a merge, the key breaks you away (fewer than 3 left =
+--                       it falls apart)
 --   steer(character, v) the leader (whoever started it) steers with their camera
 -- It flies on until it crashes into something: a huge blast that hurts everyone round it (and
--- breaks Shatterspin), then everyone lands. Also: the dragon crew (two bots that ride dragons
--- with you, to try merging on your own), spawned from the menu.
+-- breaks Shatterspin), then everyone lands. Also: the dragon crew (bots you pick from the menu
+-- that do the Rising Dragon with you, so you can merge on your own).
 -- SpinjitzuServer sets onEnd (land) and onBreakAway (a few more seconds of flight).
 
 local Players = game:GetService("Players")
@@ -32,6 +34,7 @@ folder.Parent = ReplicatedStorage
 
 local groups = {} -- [cfg] = { members = { character }, want = Vector3, born = os.clock() }
 local inGroup = {} -- [character] = cfg
+local crew = {} -- [bot] = { owner, slot, home (CFrame), mode, t, from }: the dragon crew (see below)
 local nextId = 0
 
 local function rootOf(model)
@@ -111,6 +114,7 @@ local function release(character, reason)
 	else
 		character:SetAttribute("DragonPhase", "fly") -- (crew bots: back to following you)
 		if root then root.Anchored = true end
+		if crew[character] then crew[character].mode = "fly" end
 	end
 	return cfg
 end
@@ -139,16 +143,18 @@ local function form(members, leader)
 	for _, m in ipairs(members) do center += rootOf(m).Position end
 	center /= #members
 	local lroot = rootOf(leader.Character)
-	local dir = flat(lroot.CFrame.LookVector, Vector3.new(0, 0, -1))
+	local heading = flat(lroot.CFrame.LookVector, Vector3.new(0, 0, -1))
 	local now = workspace:GetServerTimeNow()
+	-- (first it flies straight up, the ring flat, while the spin builds)
 	cfg:SetAttribute("Center", center)
-	cfg:SetAttribute("Dir", dir)
+	cfg:SetAttribute("Dir", Vector3.yAxis)
+	cfg:SetAttribute("Axis", heading)
 	cfg:SetAttribute("Angle", 0)
-	cfg:SetAttribute("Spin", Merge.Spin)
-	cfg:SetAttribute("Speed", Config.MergeSpeed or 80)
+	cfg:SetAttribute("Spin", 0)
+	cfg:SetAttribute("Speed", Config.MergeRiseSpeed or 30)
 	cfg:SetAttribute("Stamp", now)
 	cfg:SetAttribute("Leader", leader.UserId)
-	local g = { members = members, want = dir, born = os.clock() }
+	local g = { members = members, want = heading, born = os.clock() }
 	writeMembers(cfg, g)
 	for _, m in ipairs(members) do
 		local root = rootOf(m)
@@ -205,7 +211,7 @@ function Server.request(character)
 		return ("Merge: you need 3 dragons close together (%d here)"):format(#near + 1)
 	end
 	local members = { character }
-	for i = 1, math.min(3, #near) do table.insert(members, near[i][1]) end
+	for i = 1, math.min(Merge.Max - 1, #near) do table.insert(members, near[i][1]) end
 	form(members, player)
 	return nil
 end
@@ -259,18 +265,26 @@ RunService.Heartbeat:Connect(function(dt)
 		end
 		if #g.members < 3 or not leaderOf(g) then
 			disband(cfg, "away")
-		elseif os.clock() - g.born > (Config.MergeTime or 15) then
+		elseif os.clock() - g.born > (Config.MergeTime or 17) then
 			burst(cfg:GetAttribute("Center"), colorsOf(g.members), 20)
 			disband(cfg, "end")
 		else
-			-- fly on, turning toward where the leader looks
+			-- straight up while the spin builds, then on, turning toward where the leader looks
+			local age = os.clock() - g.born
+			local rising = age < (Config.MergeRiseTime or 2.2)
+			local build = math.clamp((age - Merge.FormTime * 0.5) / 1.6, 0, 1)
+			local spin = Merge.Spin * build * build * (3 - 2 * build)
+			local speed = rising and (Config.MergeRiseSpeed or 30)
+				or math.min(Config.MergeSpeed or 80, (cfg:GetAttribute("Speed") or 30) + 90 * dt)
 			local center, dir = cfg:GetAttribute("Center"), cfg:GetAttribute("Dir")
-			local speed = cfg:GetAttribute("Speed")
-			local angleTo = math.acos(math.clamp(dir:Dot(g.want), -1, 1))
+			local want = rising and Vector3.yAxis or g.want
+			local angleTo = math.acos(math.clamp(dir:Dot(want), -1, 1))
 			if angleTo > 1e-3 then
 				local step = math.min(1, (Config.MergeTurn or 1.8) * dt / angleTo)
-				dir = dir:Lerp(g.want, step).Unit
+				dir = dir:Lerp(want, step)
+				dir = dir.Magnitude > 1e-3 and dir.Unit or want
 			end
+			local axis = Merge.axisFor(dir, cfg:GetAttribute("Axis"))
 			-- crashed into something?
 			local params = RaycastParams.new()
 			params.FilterType = Enum.RaycastFilterType.Exclude
@@ -287,7 +301,10 @@ RunService.Heartbeat:Connect(function(dt)
 				center += dir * speed * dt
 				cfg:SetAttribute("Center", center)
 				cfg:SetAttribute("Dir", dir)
-				cfg:SetAttribute("Angle", (cfg:GetAttribute("Angle") or 0) + Merge.Spin * dt)
+				cfg:SetAttribute("Axis", axis)
+				cfg:SetAttribute("Spin", spin)
+				cfg:SetAttribute("Speed", speed)
+				cfg:SetAttribute("Angle", (cfg:GetAttribute("Angle") or 0) + spin * dt)
 				cfg:SetAttribute("Stamp", now)
 				-- the server puts everyone in place too (clients draw it smoothly themselves)
 				for i, m in ipairs(g.members) do
@@ -301,79 +318,115 @@ RunService.Heartbeat:Connect(function(dt)
 end)
 
 ----------------------------------------------------------------------------------------
--- the dragon crew: two bots on dragons that fly with you (to merge on your own)
+-- the dragon crew: bots you pick (up to 5) to merge with on your own. They stand spread out round
+-- you; when you do the Rising Dragon each does its own (Spinjitzu -> rises up on its dragon, a
+-- moment apart), then they fly with you in a V; when you land they dive back to their spots
 ----------------------------------------------------------------------------------------
 
-local CREW_ELEMENTS = { "Fire", "Lightning", "Ice", "Water", "Earth", "Energy" }
+local ELEMENTS = { Fire = true, Lightning = true, Ice = true, Water = true, Earth = true, Energy = true }
 
 function Server.removeCrew(player)
 	for _, bot in ipairs(CollectionService:GetTagged("DragonCrew")) do
 		if bot:GetAttribute("CrewOwner") == player.UserId then
 			if inGroup[bot] then
-				local cfg = inGroup[bot]
-				local g = groups[cfg]
+				local g = groups[inGroup[bot]]
 				if g then table.remove(g.members, table.find(g.members, bot) or 0) end
 				release(bot, "away")
 			end
+			crew[bot] = nil
 			bot:Destroy()
 		end
 	end
 end
 
-function Server.spawnCrew(player)
-	local character = player.Character
-	local root = rootOf(character)
-	if not root then return end
+-- elements: a list like { "Fire", "Lightning" }
+function Server.spawnCrew(player, elements)
+	local root = player.Character and rootOf(player.Character)
+	if not root then return 0 end
 	Server.removeCrew(player)
-	local mine = player:GetAttribute("SpinjitzuElement") or Config.Element
 	local picks = {}
-	for _, el in ipairs(CREW_ELEMENTS) do
-		if el ~= mine and #picks < 2 then table.insert(picks, el) end
+	for _, el in ipairs(elements) do
+		if ELEMENTS[el] and #picks < Merge.Max - 1 then table.insert(picks, el) end
 	end
+	-- spread round behind you, well apart
+	local look = flat(root.CFrame.LookVector, Vector3.new(0, 0, -1))
+	local base = math.atan2(look.Z, look.X) + math.pi
 	for i, el in ipairs(picks) do
-		local side = i == 1 and 1 or -1
-		local bot = Bots.make(el, root.Position + root.CFrame.RightVector * side * 8 - root.CFrame.LookVector * 4,
-			"DragonCrew_" .. el, root.Position + root.CFrame.LookVector * 20)
+		local a = base + ((i - 0.5) / #picks - 0.5) * math.pi * 1.25
+		local pos = root.Position + Vector3.new(math.cos(a), 0, math.sin(a)) * 24
+		local bot = Bots.make(el, pos, "DragonCrew_" .. el, root.Position)
 		bot:FindFirstChildOfClass("Humanoid").DisplayName = el .. " (dragon crew)"
 		bot:SetAttribute("CrewOwner", player.UserId)
-		bot:SetAttribute("CrewSide", side)
 		bot:SetAttribute("ServerFlight", true) -- (clients don't fly it round its demo loop)
 		CollectionService:AddTag(bot, "DragonCrew")
+		crew[bot] = { owner = player, slot = i, home = rootOf(bot).CFrame, mode = "idle", t = 0 }
 	end
+	return #picks
 end
 
--- crew bots follow their owner: on a dragon beside + behind you while you're riding, standing next
--- to you otherwise
 local FLY_PITCH = math.rad(75)
+local function smooth(x)
+	x = math.clamp(x, 0, 1)
+	return x * x * (3 - 2 * x)
+end
+
 RunService.Heartbeat:Connect(function(dt)
-	for _, bot in ipairs(CollectionService:GetTagged("DragonCrew")) do
-		local owner = Players:GetPlayerByUserId(bot:GetAttribute("CrewOwner") or 0)
-		local oroot = owner and rootOf(owner.Character)
+	for bot, st in pairs(crew) do
 		local root = rootOf(bot)
-		if not owner or not bot.Parent then
-			if bot.Parent then bot:Destroy() end
-		elseif root and oroot and not inGroup[bot] then
-			local phase = owner.Character:GetAttribute("DragonPhase")
-			local side = bot:GetAttribute("CrewSide") or 1
+		local oroot = st.owner.Parent and st.owner.Character and rootOf(st.owner.Character)
+		if not bot.Parent or not root then
+			crew[bot] = nil
+		elseif oroot and not inGroup[bot] then
+			local ophase = st.owner.Character:GetAttribute("DragonPhase")
+			local riding = ophase == "spin" or ophase == "rise" or ophase == "fly" or ophase == "merge"
 			local heading = flat(oroot.CFrame.LookVector, Vector3.new(0, 0, -1))
-			if phase == "fly" or phase == "rise" or phase == "merge" then
-				local flying = phase == "fly"
-				if flying then heading = flat(oroot.AssemblyLinearVelocity, heading) end
-				if bot:GetAttribute("DragonPhase") ~= "fly" then
+			if ophase == "fly" then heading = flat(oroot.AssemblyLinearVelocity, heading) end
+			st.t += dt
+			if st.mode == "idle" then
+				if riding then st.mode, st.t, st.wait = "wait", 0, 0.2 + math.random() * 1.4 end
+			elseif st.mode == "wait" then
+				if not riding then
+					st.mode = "idle"
+				elseif st.t >= st.wait then
+					st.mode, st.t = "spin", 0
+					bot:SetAttribute("DragonPhase", "spin")
+					bot:SetAttribute("SpinjitzuActive", true)
+				end
+			elseif st.mode == "spin" then
+				if st.t >= (Config.DragonSpinTime or 2) then
+					st.mode, st.t, st.from = "rise", 0, root.Position
+					bot:SetAttribute("DragonPhase", "rise")
+					bot:SetAttribute("SpinjitzuActive", false)
+				end
+			elseif st.mode == "rise" then
+				local f = math.clamp(st.t / (Config.DragonRiseTime or 3), 0, 1)
+				local pos = st.from + Vector3.yAxis * (Config.DragonRiseHeight or 35) * (1 - (1 - f) ^ 2)
+				root.CFrame = CFrame.lookAt(pos, pos + heading)
+				if f >= 1 then
+					st.mode, st.t = "fly", 0
 					bot:SetAttribute("DragonPhase", "fly")
 				end
-				local right = heading:Cross(Vector3.yAxis)
-				local want = oroot.Position + right * side * 13 - heading * 7 + Vector3.new(0, 1.5, 0)
-				local pos = root.Position:Lerp(want, 1 - math.exp(-dt * 5))
-				local tip = flying and FLY_PITCH * math.clamp(oroot.AssemblyLinearVelocity.Magnitude / 30, 0, 1) or 0
-				root.CFrame = CFrame.lookAt(pos, pos + heading) * CFrame.Angles(-tip, 0, 0)
-			else
-				if bot:GetAttribute("DragonPhase") then bot:SetAttribute("DragonPhase", nil) end
-				local right = heading:Cross(Vector3.yAxis)
-				local want = oroot.Position + right * side * 6 - heading * 3
-				if (root.Position - want).Magnitude > 4 then
-					local pos = root.Position:Lerp(want, 1 - math.exp(-dt * 3))
-					root.CFrame = CFrame.lookAt(pos, pos + heading)
+			elseif st.mode == "fly" then
+				if not riding then
+					st.mode, st.t, st.from = "land", 0, root.CFrame
+				else
+					-- a V behind you
+					local side = st.slot % 2 == 1 and 1 or -1
+					local rank = math.ceil(st.slot / 2)
+					local right = heading:Cross(Vector3.yAxis)
+					local want = oroot.Position + right * side * 14 * rank - heading * 8 * rank + Vector3.new(0, 2 * rank, 0)
+					local pos = root.Position:Lerp(want, 1 - math.exp(-dt * 4))
+					local moving = ophase == "fly" and math.clamp(oroot.AssemblyLinearVelocity.Magnitude / 30, 0, 1) or 0
+					root.CFrame = CFrame.lookAt(pos, pos + heading) * CFrame.Angles(-FLY_PITCH * moving, 0, 0)
+				end
+			elseif st.mode == "land" then
+				-- dive back down to its spot, then the landing
+				local f = smooth(st.t / 0.8)
+				root.CFrame = st.from:Lerp(st.home, f)
+				if f >= 1 then
+					st.mode = "idle"
+					bot:SetAttribute("DragonPhase", nil)
+					bot:SetAttribute("DragonLanded", (bot:GetAttribute("DragonLanded") or 0) + 1)
 				end
 			end
 		end
