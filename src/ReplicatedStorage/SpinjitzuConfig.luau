@@ -1,4 +1,4 @@
--- SpinjitzuConfig v16.1  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuConfig v16.2  (ModuleScript in ReplicatedStorage)
 
 local Config = {}
 
@@ -108,6 +108,16 @@ Config.DragonBoost = 1.9        -- holding Shift while flying: this many times f
 Config.DragonFlyTime = 9        -- seconds of flight after the rise, then you dive straight down + land
 Config.DragonLockKey = Enum.KeyCode.C -- on the dragon: lock onto the Shatterspinner nearest the middle of your screen (again = let go)
 Config.DragonLockRange = 250    -- studs
+-- Dragon merge (G on the dragon): 3-4 dragons close together lock into a ring and spin, flying where
+-- whoever started it looks, until it crashes into something (G again = break away)
+Config.MergeKey = Enum.KeyCode.G
+Config.MergeRange = 60          -- studs: how close the other dragons must be
+Config.MergeSpeed = 80          -- studs/s
+Config.MergeTurn = 1.8          -- radians/s it can turn
+Config.MergeTime = 15           -- seconds before it falls apart on its own
+Config.MergeDamage = 70         -- the crash, to everyone within MergeBlastRadius (breaks Shatterspin too)
+Config.MergeBlastRadius = 22
+Config.MergeBreakAwayTime = 4   -- seconds you keep flying after breaking away
 Config.DragonRamRange = 9       -- studs: locked on and this close = you hit them (Shatterspin broken)
 Config.DragonUpKey = Enum.KeyCode.Space
 Config.DragonDownKey = Enum.KeyCode.LeftControl
@@ -121,9 +131,11 @@ Config.DragonBot = true         -- a bot that demos the dragon on a loop
 -- things, and nothing can hurt you while it's on. Countered only by a Rising Dragon (lock on with C,
 -- then fly into them). Spawn bots that do it from the menu (Bots page).
 Config.ShatterKey = Enum.KeyCode.X
-Config.ShatterTime = 8              -- seconds it lasts
-Config.ShatterCooldown = 12         -- seconds before you can do it again
+-- (it doesn't run out: it goes until a dragon breaks it, or you press X again)
+Config.ShatterCooldown = 12         -- seconds before you can do it again after stopping it yourself
 Config.ShatterBrokenCooldown = 20   -- ... after a dragon broke it
+Config.ShatterWeakTime = 10         -- seconds you're weakened after it's broken (slow, glowing dark red)
+Config.ShatterBotHealth = 150       -- the Shatterspin bots' health
 Config.ShatterSpeed = 2.6           -- walk speed multiplier
 Config.ShatterRadius = 10           -- studs it reaches
 Config.ShatterDamage = 9            -- per hit (each thing it touches gets hit twice a second)

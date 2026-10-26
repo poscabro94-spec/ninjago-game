@@ -1,4 +1,4 @@
--- NinjaMenu v1.7  (LocalScript in StarterPlayerScripts)
+-- NinjaMenu v1.8  (LocalScript in StarterPlayerScripts)
 -- The MENU button (bottom left, or M) opens a panel: pick your character (NinjaRoster), switch
 -- Golden Weapons on and off (several at once), spawn the Tornado of Creation crew as bots and
 -- training dummies (normal / infinite HP), and Duels: two NPCs clashing beams (you pick who
@@ -571,7 +571,14 @@ local function buildCards()
 		task.delay(0.3, function() setOpen(false) end)
 	end)
 	button.Parent = botGrid
-	button, viewport, setSelected, disc = card(5, "Remove Bots", "crew, dummies, bots")
+	button, viewport = card(5, "Dragon Crew", "merge with them")
+	showCrew(viewport, { "Fire", "Lightning" })
+	button.Activated:Connect(function()
+		remote:FireServer("bots", "dragoncrew")
+		task.delay(0.3, function() setOpen(false) end)
+	end)
+	button.Parent = botGrid
+	button, viewport, setSelected, disc = card(6, "Remove Bots", "crew, dummies, bots")
 	showNone(disc)
 	button.Activated:Connect(function() remote:FireServer("bots", "remove") end)
 	button.Parent = botGrid

@@ -1,4 +1,4 @@
--- GoldenWeaponsServer v8.1  (Script in ServerScriptService)
+-- GoldenWeaponsServer v8.2  (Script in ServerScriptService)
 -- Gives every player the Golden Weapon of their element on spawn (slot 1) and swaps it when
 -- they switch element: Lightning = Nunchucks of Lightning, Fire = Sword of Fire,
 -- Earth = Scythe of Quakes, Ice = Shurikens of Ice. The menu can hand out several at once (player
@@ -193,7 +193,8 @@ local function hitArea(W, character, swing, center, range, from)
 	for _, part in ipairs(workspace:GetPartBoundsInRadius(center, range, params)) do
 		local model = part:FindFirstAncestorOfClass("Model")
 		local hum = model and model:FindFirstChildOfClass("Humanoid")
-		if hum and not done[model] and hum.Health > 0 and not CollectionService:HasTag(model, "SpinjitzuNPC") then
+		if hum and not done[model] and hum.Health > 0 and (not CollectionService:HasTag(model, "SpinjitzuNPC") or model:GetAttribute("Hittable"))
+			and not model:GetAttribute("Shatterspin") then
 			done[model] = true
 			local tRoot = model:FindFirstChild("HumanoidRootPart") or part
 			hum:TakeDamage(swing.damage)
@@ -1044,7 +1045,8 @@ local function launchShuriken(character, origin, dir, template, swing)
 			if hit then
 				local model = hit.Instance:FindFirstAncestorOfClass("Model")
 				local hum = model and model:FindFirstChildOfClass("Humanoid")
-				if hum and hum.Health > 0 and not CollectionService:HasTag(model, "SpinjitzuNPC") then
+				if hum and hum.Health > 0 and (not CollectionService:HasTag(model, "SpinjitzuNPC") or model:GetAttribute("Hittable"))
+					and not model:GetAttribute("Shatterspin") then
 					local tRoot = model:FindFirstChild("HumanoidRootPart") or hit.Instance
 					hum:TakeDamage(swing.damage)
 					model:SetAttribute("LastHit", os.clock())

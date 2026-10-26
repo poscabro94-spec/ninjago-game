@@ -63,7 +63,7 @@ end
 -- counter: on the dragon, press the lock key (C) to lock on, then fly into it
 if Config.ShatterBot then
 	local Shatter = require(script.Parent:WaitForChild("Shatterspin"))
-	Shatter.spawnBot(origin + Vector3.new(45, 0, 35))
+	Shatter.spawnBot(origin + Vector3.new(45, 0, 35), nil, nil, true)
 end
 
 -- Dragon demo bot: spin -> rises straight up with the dragon -> flies a loop -> lands, on repeat

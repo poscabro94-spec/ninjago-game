@@ -1,7 +1,8 @@
--- SpinjitzuClient v11.0  (LocalScript in StarterPlayer > StarterPlayerScripts)
+-- SpinjitzuClient v11.1  (LocalScript in StarterPlayer > StarterPlayerScripts)
 -- Q toggles Spinjitzu, X Shatterspin, E switches element, R does the Dragon (spin -> rise -> 6s of
 -- flight -> landing). Flying, you keep going where the camera looks (A/D drift, Space up, Ctrl down,
--- Shift faster); C locks onto a Shatterspinner and the camera keeps them in front of you.
+-- Shift faster); C locks onto a Shatterspinner and the camera keeps them in front of you; G merges
+-- with 2-3 other dragons close by (see DragonMerge): this client draws every merge smoothly.
 -- Renders the tornado / dragon for every player (and NPCs tagged "SpinjitzuNPC"),
 -- drives the character spin, limb poses, and your own dragon flight.
 
@@ -15,6 +16,7 @@ local CollectionService = game:GetService("CollectionService")
 local Config = require(ReplicatedStorage:WaitForChild("SpinjitzuConfig"))
 local SpinjitzuEffect = require(ReplicatedStorage:WaitForChild("SpinjitzuEffect"))
 local Dragon = require(ReplicatedStorage:WaitForChild("SpinjitzuDragon"))
+local Merge = require(ReplicatedStorage:WaitForChild("DragonMerge"))
 local NinjaAnimator = require(ReplicatedStorage:WaitForChild("NinjaAnimator"))
 local toggleRemote = ReplicatedStorage:WaitForChild("SpinjitzuToggle")
 
@@ -85,6 +87,7 @@ end
 
 local flight = nil
 local playLanding -- (below)
+local mergeUpdate -- (below)
 local lockBlend = 0 -- 0..1: how much the lock-on camera / steering has taken over
 
 -- the root of the Shatterspinner you're locked onto (nil = none)
@@ -404,7 +407,7 @@ end
 
 local function dragonRefresh(character)
 	local phase = character:GetAttribute("DragonPhase")
-	local out = (phase == "rise" or phase == "fly" or phase == "land") and isAlive(character)
+	local out = (phase == "rise" or phase == "fly" or phase == "land" or phase == "merge") and isAlive(character)
 	if out then
 		local d = dragons[character]
 		if not d then
@@ -418,7 +421,7 @@ local function dragonRefresh(character)
 			creatingDragon[character] = nil
 			if not d then return end
 			phase = character:GetAttribute("DragonPhase")
-			if not ((phase == "rise" or phase == "fly" or phase == "land") and isAlive(character)) then
+			if not ((phase == "rise" or phase == "fly" or phase == "land" or phase == "merge") and isAlive(character)) then
 				d:Destroy() -- it ended while it was being built
 				return
 			end
@@ -427,8 +430,16 @@ local function dragonRefresh(character)
 		end
 		d:SetPhase(phase)
 		if character == localPlayer.Character then
-			flightStart(character)
-		elseif CollectionService:HasTag(character, NPC_TAG) and not npcFlights[character] then
+			-- (in a merge the server holds you in the ring: no flying yourself)
+			if phase == "merge" then
+				flightStop()
+				local hum = character:FindFirstChildOfClass("Humanoid")
+				if hum then hum.PlatformStand = true end
+			else
+				flightStart(character)
+			end
+		elseif CollectionService:HasTag(character, NPC_TAG) and not npcFlights[character]
+			and not character:GetAttribute("ServerFlight") then
 			local root = character:FindFirstChild("HumanoidRootPart")
 			if root then
 				local home = npcHome[character] or root.CFrame
@@ -520,6 +531,9 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		toggleRemote:FireServer("shatter")
 	elseif Config.DragonLockKey and input.KeyCode == Config.DragonLockKey then
 		toggleLock()
+	elseif Config.MergeKey and input.KeyCode == Config.MergeKey then
+		local phase = localPlayer.Character and localPlayer.Character:GetAttribute("DragonPhase")
+		if phase == "rise" or phase == "fly" or phase == "merge" then toggleRemote:FireServer("merge") end
 	end
 end)
 
@@ -589,6 +603,190 @@ local function spinMultiplier(fx)
 		return (1 - ts / SPIN_DOWN) ^ 2
 	end
 	return 0
+end
+
+----------------------------------------------------------------------------------------
+-- dragon merges: every client puts each dragon in its spot in the spinning ring itself (smooth,
+-- from the shared maths in DragonMerge), draws the light between them, and the leader steers it
+-- with their camera. Your camera follows the middle of the ring, not you (you're spinning round it)
+----------------------------------------------------------------------------------------
+
+local mergeFolder = ReplicatedStorage:WaitForChild("DragonMerges", 10)
+local mergeFx = {} -- [cfg] = { core, light, beams = { [key] = beam }, atts = { [character] = attachment } }
+local mergeFocus -- your camera's subject while you're in a merge
+local steerT = 0
+local TEX_SPARK = "rbxasset://textures/particles/sparkles_main.dds"
+
+local function memberColor(m)
+	return m:GetAttribute("SpinjitzuColor") or Color3.new(1, 1, 1)
+end
+
+local function buildMergeFx(cfg)
+	local fx = { beams = {}, atts = {}, edges = {} }
+	local fxFolder = workspace:FindFirstChild("SpinjitzuFX") or Instance.new("Folder")
+	fxFolder.Name = "SpinjitzuFX"
+	fxFolder.Parent = workspace
+	local core = Instance.new("Part")
+	core.Name = "MergeCore"
+	core.Shape = Enum.PartType.Ball
+	core.Material = Enum.Material.Neon
+	core.Anchored, core.CanCollide, core.CanQuery, core.CanTouch, core.CastShadow = true, false, false, false, false
+	core.Color = Color3.new(1, 1, 1)
+	core.Transparency = 0.25
+	core.Size = Vector3.one * 3
+	core.Parent = fxFolder
+	fx.core = core
+	fx.light = Instance.new("PointLight")
+	fx.light.Range, fx.light.Brightness, fx.light.Shadows = 30, 4, false
+	fx.light.Parent = core
+	local att = Instance.new("Attachment")
+	att.Parent = core
+	fx.coreAtt = att
+	-- sparks flying off the middle, streaks flung out round it
+	local cols = {}
+	for _, mem in ipairs(Merge.members(cfg)) do table.insert(cols, memberColor(mem[1])) end
+	local seq = #cols >= 2 and ColorSequence.new({
+		ColorSequenceKeypoint.new(0, cols[1]), ColorSequenceKeypoint.new(0.5, cols[2]), ColorSequenceKeypoint.new(1, cols[3] or cols[1]),
+	}) or ColorSequence.new(Color3.new(1, 1, 1))
+	local function emitter(props)
+		local pe = Instance.new("ParticleEmitter")
+		for k, v in pairs(props) do pe[k] = v end
+		pe.LightInfluence = 0
+		pe.Parent = att
+		return pe
+	end
+	emitter({ Texture = TEX_SPARK, Color = seq, LightEmission = 1, Brightness = 5,
+		Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.6), NumberSequenceKeypoint.new(1, 0) }),
+		Lifetime = NumberRange.new(0.3, 0.7), Rate = 120, Speed = NumberRange.new(20, 45), SpreadAngle = Vector2.new(180, 180), Drag = 2 })
+	emitter({ Texture = TEX_SPARK, Color = seq, LightEmission = 1, Brightness = 4,
+		Orientation = Enum.ParticleOrientation.VelocityParallel, Squash = NumberSequence.new(6),
+		Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.4), NumberSequenceKeypoint.new(1, 0.1) }),
+		Lifetime = NumberRange.new(0.25, 0.5), Rate = 90, Speed = NumberRange.new(50, 90), SpreadAngle = Vector2.new(180, 180) })
+	emitter({ Texture = "rbxasset://textures/particles/smoke_main.dds", Color = ColorSequence.new(Color3.new(1, 1, 1)),
+		LightEmission = 1, Brightness = 3, LockedToPart = true,
+		Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 9), NumberSequenceKeypoint.new(1, 5) }),
+		Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.55), NumberSequenceKeypoint.new(1, 1) }),
+		Lifetime = NumberRange.new(0.15, 0.3), Rate = 30, Speed = NumberRange.new(0),
+		Rotation = NumberRange.new(0, 360), RotSpeed = NumberRange.new(-300, 300) })
+	mergeFx[cfg] = fx
+	return fx
+end
+
+local function dropMergeFx(cfg)
+	local fx = mergeFx[cfg]
+	mergeFx[cfg] = nil
+	if not fx then return end
+	fx.core:Destroy()
+	for _, a in pairs(fx.atts) do a:Destroy() end
+end
+
+-- a glowing beam from a to b (colours ca -> cb)
+local function mergeBeam(fx, key, a0, a1, ca, cb, width)
+	local b = fx.beams[key]
+	if not b then
+		b = Instance.new("Beam")
+		b.FaceCamera, b.Segments = true, 1
+		b.LightEmission, b.LightInfluence, b.Brightness = 1, 0, 4
+		b.Texture = TEX_SPARK
+		b.TextureMode, b.TextureLength, b.TextureSpeed = Enum.TextureMode.Wrap, 3, 6
+		b.Transparency = NumberSequence.new(0.15)
+		b.Parent = fx.core
+		fx.beams[key] = b
+	end
+	b.Attachment0, b.Attachment1 = a0, a1
+	b.Color = ColorSequence.new(ca, cb)
+	b.Width0, b.Width1 = width, width
+	return b
+end
+
+mergeUpdate = function(dt)
+	local now = workspace:GetServerTimeNow()
+	local me = localPlayer.Character
+	local myCfg
+	local live = {}
+	for _, cfg in ipairs(mergeFolder and mergeFolder:GetChildren() or {}) do
+		local st = Merge.state(cfg, now)
+		local members = Merge.members(cfg)
+		if st and #members > 0 then
+			live[cfg] = true
+			local fx = mergeFx[cfg] or buildMergeFx(cfg)
+			local pulse = 1 + math.sin(os.clock() * 14) * 0.15
+			fx.core.CFrame = CFrame.new(st.center)
+			fx.core.Size = Vector3.one * 3.2 * pulse
+			local seen = {}
+			for _, mem in ipairs(members) do
+				local m, slot = mem[1], mem[2]
+				local root = m:FindFirstChild("HumanoidRootPart")
+				local cf = root and Merge.memberCF(cfg, m, slot, #members, now)
+				if cf then
+					root.CFrame = cf
+					root.AssemblyLinearVelocity = st.dir * (cfg:GetAttribute("Speed") or 0)
+					if not fx.atts[m] then
+						local a = Instance.new("Attachment")
+						a.Name = "MergeAtt"
+						a.Parent = root
+						fx.atts[m] = a
+					end
+					seen[m] = true
+				end
+				if m == me then myCfg = cfg end
+			end
+			for m, a in pairs(fx.atts) do
+				if not seen[m] then
+					a:Destroy()
+					fx.atts[m] = nil
+				end
+			end
+			-- light round the ring (each edge from one dragon's colour to the next) + into the middle
+			local n = #members
+			local used = {}
+			for i, mem in ipairs(members) do
+				local m, nextM = mem[1], members[i % n + 1][1]
+				local a, b = fx.atts[m], fx.atts[nextM]
+				if a and b and n > 1 then
+					used["e" .. i] = mergeBeam(fx, "e" .. i, a, b, memberColor(m), memberColor(nextM), 1.6 * pulse)
+				end
+				if a then used["s" .. i] = mergeBeam(fx, "s" .. i, a, fx.coreAtt, memberColor(m), Color3.new(1, 1, 1), 0.7) end
+			end
+			for key, b in pairs(fx.beams) do
+				if not used[key] then
+					b:Destroy()
+					fx.beams[key] = nil
+				end
+			end
+			-- the leader steers with their camera
+			if cfg:GetAttribute("Leader") == localPlayer.UserId and myCfg == cfg then
+				steerT -= dt
+				if steerT <= 0 then
+					steerT = 1 / 15
+					toggleRemote:FireServer("mergeDir", workspace.CurrentCamera.CFrame.LookVector)
+				end
+			end
+		end
+	end
+	for cfg in pairs(mergeFx) do
+		if not live[cfg] then dropMergeFx(cfg) end
+	end
+	-- your camera follows the middle of the ring while you're in it
+	local cam = workspace.CurrentCamera
+	if myCfg then
+		local st = Merge.state(myCfg, now)
+		if not mergeFocus then
+			mergeFocus = Instance.new("Part")
+			mergeFocus.Name = "MergeCameraFocus"
+			mergeFocus.Anchored, mergeFocus.CanCollide, mergeFocus.CanQuery = true, false, false
+			mergeFocus.Transparency = 1
+			mergeFocus.Size = Vector3.one * 0.2
+			mergeFocus.Parent = workspace.CurrentCamera
+			cam.CameraSubject = mergeFocus
+		end
+		if st then mergeFocus.CFrame = CFrame.new(st.center) end
+	elseif mergeFocus then
+		mergeFocus:Destroy()
+		mergeFocus = nil
+		local hum = me and me:FindFirstChildOfClass("Humanoid")
+		if hum then cam.CameraSubject = hum end
+	end
 end
 
 ----------------------------------------------------------------------------------------
@@ -687,9 +885,10 @@ RunService.RenderStepped:Connect(function(dt)
 		end
 	end
 
-	-- dragons: move NPCs along their path first, then update visuals to follow
+	-- dragons: move NPCs along their path first (and everyone in a merge), then update visuals to follow
 	for npc in pairs(npcFlights) do npcFlightUpdate(npc, dt) end
 	flightUpdate(dt)
+	mergeUpdate(dt)
 	lodUpdate(dt)
 	creationHideUpdate()
 	for d in pairs(dragonRunning) do
@@ -898,7 +1097,7 @@ end
 RunService:BindToRenderStep("DragonHUD", Enum.RenderPriority.Camera.Value + 1, function(dt)
 	local character = localPlayer.Character
 	local phase = character and character:GetAttribute("DragonPhase")
-	local onDragon = phase == "rise" or phase == "fly" or phase == "land"
+	local onDragon = phase == "rise" or phase == "fly" or phase == "land" or phase == "merge"
 	hud.Enabled = onDragon
 	if not onDragon then
 		lockBlend = 0
@@ -918,6 +1117,10 @@ RunService:BindToRenderStep("DragonHUD", Enum.RenderPriority.Camera.Value + 1, f
 		barFill.Size = UDim2.fromScale(1, 1)
 		barFill.BackgroundColor3 = col
 		barText.Text = "RISING"
+	elseif phase == "merge" then
+		barFill.Size = UDim2.fromScale(1, 1)
+		barFill.BackgroundColor3 = Color3.new(1, 1, 1)
+		barText.Text = "MERGED"
 	else
 		barFill.Size = UDim2.fromScale(0, 1)
 		barText.Text = "DIVE!"
@@ -925,7 +1128,17 @@ RunService:BindToRenderStep("DragonHUD", Enum.RenderPriority.Camera.Value + 1, f
 	-- lock-on
 	local locked = phase ~= "land" and lockTarget(character) or nil
 	local key = Config.DragonLockKey and Config.DragonLockKey.Name or "C"
-	hint.Text = locked and ("fly into them!  (%s = let go)"):format(key) or ("%s = lock onto a Shatterspinner"):format(key)
+	local mkey = Config.MergeKey and Config.MergeKey.Name or "G"
+	if phase == "merge" then
+		local leader = mergeFolder and character:GetAttribute("MergeId")
+			and mergeFolder:FindFirstChild("Merge" .. character:GetAttribute("MergeId"))
+		local steering = leader and leader:GetAttribute("Leader") == localPlayer.UserId
+		hint.Text = (steering and "steer with your camera - crash into something!  " or "") .. ("%s = break away"):format(mkey)
+	elseif locked then
+		hint.Text = ("fly into them!  (%s = let go)"):format(key)
+	else
+		hint.Text = ("%s = lock onto a Shatterspinner   %s = merge (3+ dragons)"):format(key, mkey)
+	end
 	local root = character:FindFirstChild("HumanoidRootPart")
 	if locked and root then
 		if not lockFx or lockFx.target ~= locked then makeLockFx(root, locked) end

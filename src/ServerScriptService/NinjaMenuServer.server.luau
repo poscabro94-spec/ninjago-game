@@ -1,4 +1,4 @@
--- NinjaMenuServer v1.3  (Script in ServerScriptService)
+-- NinjaMenuServer v1.4  (Script in ServerScriptService)
 -- What the menu (NinjaMenu) asks for:
 --   "character", name  -> become that ninja (element + look), "You" = back to your own avatar
 --   "weapon", kind     -> add / remove that Golden Weapon ("All", "None" too). The list is the
@@ -7,6 +7,7 @@
 --   "bots", "creation" -> the other three Tornado of Creation ninja as bots around you
 --   "bots", "dummy" / "dummyInf" -> a training dummy (normal / infinite HP) in front of you
 --   "bots", "shatter"  -> a bot Shatterspinning in a circle in front of you (practise the counter)
+--   "bots", "dragoncrew" -> two bots that ride dragons with you (so you can merge on your own)
 --   "bots", "remove"   -> your bots and dummies go away
 -- Your look stays when you respawn.
 
@@ -236,11 +237,16 @@ remote.OnServerEvent:Connect(function(player, action, value)
 			spawnCrew(player)
 		elseif value == "shatter" then
 			spawnShatterBot(player)
+		elseif value == "dragoncrew" then
+			require(script.Parent:WaitForChild("DragonMergeServer")).spawnCrew(player)
+			notify(player, ("Dragon crew: press %s to ride, then %s to merge"):format(
+				Config.DragonKey and Config.DragonKey.Name or "R", Config.MergeKey and Config.MergeKey.Name or "G"))
 		elseif value == "dummy" or value == "dummyInf" then
 			spawnDummy(player, value == "dummyInf")
 		elseif value == "remove" then
 			removeCrew(player)
 			removeDummies(player)
+			require(script.Parent:WaitForChild("DragonMergeServer")).removeCrew(player)
 		end
 	end
 end)

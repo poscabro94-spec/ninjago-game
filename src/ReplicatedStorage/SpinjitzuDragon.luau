@@ -1,4 +1,4 @@
--- SpinjitzuDragon v18.0  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuDragon v18.1  (ModuleScript in ReplicatedStorage)
 -- Elemental dragon that appears behind the character after Spinjitzu (Rising Dragon), built from
 -- plain parts like the show's energy dragons: solid-looking panels in the element colour with thin
 -- glowing outlines. One tall column behind you: a cap-shaped faceted head on top (V seams down
@@ -837,6 +837,8 @@ function Dragon:Update(dt)
 	elseif self.phase == "fly" then
 		flyTarget = math.clamp(horiz / 25, 0, 1)
 		effortTarget = math.max(0.3, math.clamp(speed / 20, 0, 1))
+	elseif self.phase == "merge" then -- (spinning in a merge: full speed)
+		flyTarget, effortTarget = 1, 1
 	elseif self.phase == "land" then
 		effortTarget = 0.5
 	end
@@ -860,12 +862,15 @@ function Dragon:Update(dt)
 	if mine and Powers.LocalAim then aim = Powers.LocalAim end
 	local lock = character:FindFirstChild("DragonLock")
 	local lockRoot = lock and lock:IsA("ObjectValue") and lock.Value and lock.Value:FindFirstChild("HumanoidRootPart")
-	local center = DragonNeck.Center(self.phase == "fly" and smoothstep(0, 1, self.flyT or 0) or 0)
+	local merged = self.phase == "merge"
+	local center = DragonNeck.Center((self.phase == "fly" or merged) and smoothstep(0, 1, self.flyT or 0) or 0)
 	local want
 	if typeof(aim) == "Vector3" then
 		want = DragonNeck.LookAt(Model, rootCF, sc, aim)
 	elseif lockRoot then
 		want = DragonNeck.LookAt(Model, rootCF, sc, lockRoot.Position)
+	elseif merged then
+		want = center -- (head on, the way the merge flies)
 	elseif mine and workspace.CurrentCamera then
 		want = rootCF:VectorToObjectSpace(workspace.CurrentCamera.CFrame.LookVector)
 	elseif speed > 5 then
@@ -876,7 +881,7 @@ function Dragon:Update(dt)
 	want = DragonNeck.Clamp(want, center)
 	local look = self.look:Lerp(want, 1 - math.exp(-dt * 10))
 	self.look = look.Magnitude > 0.05 and look.Unit or want
-	self.flyT = approach(self.flyT or 0, self.phase == "fly" and 1 or 0, dt * 1.5)
+	self.flyT = approach(self.flyT or 0, (self.phase == "fly" or merged) and 1 or 0, dt * 1.5)
 	-- the jaw opens while you use your power
 	self.jawT = approach(self.jawT, beaming and not self.stopping and 1 or 0, dt * (beaming and 7 or 4))
 	local lit = a * smoothstep(0, 1, self.jawT)

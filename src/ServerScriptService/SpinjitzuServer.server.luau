@@ -1,7 +1,8 @@
--- SpinjitzuServer v8.0  (Script in ServerScriptService)
+-- SpinjitzuServer v8.1  (Script in ServerScriptService)
 -- Toggles Spinjitzu on the character (every client renders it), handles element
 -- switching (E), the speed boost, Shatterspin (X, see Shatterspin) and the Dragon move (R):
 -- spin -> rise straight up -> DragonFlyTime seconds of flight -> land (R again lands early).
+-- G on the dragon merges with 2-3 other dragons close by (DragonMergeServer).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -9,6 +10,7 @@ local CollectionService = game:GetService("CollectionService")
 local Config = require(ReplicatedStorage:WaitForChild("SpinjitzuConfig"))
 local Creation = require(script.Parent:WaitForChild("SpinjitzuCreation"))
 local Shatter = require(script.Parent:WaitForChild("Shatterspin"))
+local MergeServer = require(script.Parent:WaitForChild("DragonMergeServer"))
 
 local remote = ReplicatedStorage:FindFirstChild("SpinjitzuToggle")
 if not remote then
@@ -57,7 +59,7 @@ end
 
 local function land(character)
 	local phase = character:GetAttribute("DragonPhase")
-	if phase ~= "rise" and phase ~= "fly" then return end
+	if phase ~= "rise" and phase ~= "fly" and phase ~= "merge" then return end
 	local token = character:GetAttribute("DragonToken")
 	character:SetAttribute("DragonPhase", "land")
 	character:SetAttribute("DragonEnds", nil)
@@ -70,6 +72,19 @@ end
 
 -- flew into a Shatterspinner you were locked onto: you land
 Shatter.onCounter = function(rider) land(rider) end
+
+-- merges: crashed (or ran out) = everyone lands; broke away = a few more seconds of flying
+MergeServer.onEnd = function(character) land(character) end
+MergeServer.onBreakAway = function(character)
+	local token = (character:GetAttribute("DragonToken") or 0) + 1
+	local t = Config.MergeBreakAwayTime or 4
+	character:SetAttribute("DragonToken", token)
+	character:SetAttribute("DragonPhase", "fly")
+	character:SetAttribute("DragonEnds", workspace:GetServerTimeNow() + t)
+	task.delay(t, function()
+		if character:GetAttribute("DragonToken") == token then land(character) end
+	end)
+end
 
 local function startDragon(player, character, humanoid)
 	applyLook(player, character)
@@ -158,6 +173,16 @@ remote.OnServerEvent:Connect(function(player, action, value)
 		return
 	end
 
+	if action == "merge" then
+		local why = MergeServer.request(character)
+		if why then remote:FireClient(player, "notify", why) end
+		return
+	end
+	if action == "mergeDir" then
+		MergeServer.steer(character, value)
+		return
+	end
+
 	if action == "lock" then -- (value = the Shatterspinner to lock onto, nil = let go)
 		if typeof(value) == "Instance" and value:IsA("Model") then
 			Shatter.lockOn(character, value)
@@ -169,7 +194,7 @@ remote.OnServerEvent:Connect(function(player, action, value)
 
 	if action == "dragon" then
 		local phase = character:GetAttribute("DragonPhase")
-		if phase == "rise" or phase == "fly" then
+		if phase == "rise" or phase == "fly" or phase == "merge" then
 			land(character)
 		elseif phase == "spin" then
 			endDragon(character)

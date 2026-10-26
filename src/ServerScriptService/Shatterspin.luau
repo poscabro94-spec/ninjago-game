@@ -1,9 +1,11 @@
--- Shatterspin v1.1  (ModuleScript in ServerScriptService)
+-- Shatterspin v1.2  (ModuleScript in ServerScriptService)
 -- Shatterspin (X): a red + black, destructive Spinjitzu. Faster than Spinjitzu, it wrecks anyone
 -- it touches (damage + flung away), throws loose things around, and nothing can hurt you while
--- it's on. Lasts ShatterTime seconds, then ShatterCooldown before you can do it again.
+-- it's on. It doesn't stop until it's broken (or you press X again: ShatterCooldown before the next).
 -- The only counter: on the Rising Dragon, press DragonLockKey to lock onto them, then fly straight
--- into them. That breaks it: a big hit, they're thrown and can't Shatterspin for a while; you land.
+-- into them (or a dragon merge crashes into them). That breaks it: a big hit, they're thrown, and
+-- they're weakened for ShatterWeakTime (slow, glowing dark red, no shield: you can finish them off)
+-- and can't Shatterspin for ShatterBrokenCooldown.
 -- Used by SpinjitzuServer (start / stop / lockOn / unlock), SpinjitzuBot + NinjaMenuServer (bots).
 
 local Players = game:GetService("Players")
@@ -70,11 +72,31 @@ function Shatter.start(character, humanoid)
 	shield.Name = "ShatterShield"
 	shield.Visible = false
 	shield.Parent = character
-	task.delay(Config.ShatterTime or 8, function()
-		local st = active[character]
-		if st and st.token == token then Shatter.stop(character) end
-	end)
 	return nil
+end
+
+-- broken: slow + a dark red glow for a while
+function Shatter.weaken(character)
+	local hum = character:FindFirstChildOfClass("Humanoid")
+	if not hum then return end
+	local token = (character:GetAttribute("WeakToken") or 0) + 1
+	character:SetAttribute("WeakToken", token)
+	character:SetAttribute("Weakened", true)
+	local glow = character:FindFirstChild("WeakGlow") or Instance.new("Highlight")
+	glow.Name = "WeakGlow"
+	glow.FillColor, glow.FillTransparency = Color3.fromRGB(90, 0, 10), 0.55
+	glow.OutlineColor, glow.OutlineTransparency = RED, 0.2
+	glow.Parent = character
+	local speed = character:GetAttribute("WeakSpeed") or hum.WalkSpeed
+	character:SetAttribute("WeakSpeed", speed)
+	hum.WalkSpeed = speed * 0.45
+	task.delay(Config.ShatterWeakTime or 10, function()
+		if character:GetAttribute("WeakToken") ~= token then return end
+		character:SetAttribute("Weakened", nil)
+		character:SetAttribute("WeakSpeed", nil)
+		glow:Destroy()
+		if hum.Parent then hum.WalkSpeed = speed end
+	end)
 end
 
 -- broken = countered by a dragon (longer cooldown)
@@ -92,6 +114,7 @@ function Shatter.stop(character, broken)
 	character:SetAttribute("SpinjitzuHighlight", st.look.highlight)
 	local wait = broken and (Config.ShatterBrokenCooldown or 20) or (Config.ShatterCooldown or 12)
 	character:SetAttribute("ShatterReady", workspace:GetServerTimeNow() + wait)
+	if broken then Shatter.weaken(character) end
 	-- anyone locked onto them loses the lock
 	for rider, target in pairs(locks) do
 		if target == character then Shatter.unlock(rider) end
@@ -231,26 +254,44 @@ end)
 -- bots that Shatterspin round in a circle (whenever they can), to practise the counter on
 ----------------------------------------------------------------------------------------
 
-function Shatter.spawnBot(center, name, radius)
+-- respawn = put a new one back a few seconds after this one dies (the demo bot near spawn)
+function Shatter.spawnBot(center, name, radius, respawn)
 	local Bots = require(script.Parent:WaitForChild("SpinjitzuBots"))
 	local bot = Bots.make("Fire", center, name or "SpinjitzuBot_Shatter")
 	local hum = bot:FindFirstChildOfClass("Humanoid")
 	hum.DisplayName = "Shatterspin Bot"
+	hum.MaxHealth = Config.ShatterBotHealth or 150
+	hum.Health = hum.MaxHealth
+	hum.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOn
+	bot:SetAttribute("Hittable", true) -- (powers + weapons can hit it, once it's not Shatterspinning)
 	local root = bot:FindFirstChild("HumanoidRootPart")
 	local y = root.Position.Y
 	local ang, r = math.random() * math.pi * 2, radius or 12
 	local conn
 	conn = RunService.Heartbeat:Connect(function(dt)
-		if not bot.Parent then
+		if not bot.Parent or hum.Health <= 0 then
 			conn:Disconnect()
 			return
 		end
 		if not bot:GetAttribute("Shatterspin") then
-			if (bot:GetAttribute("ShatterReady") or 0) <= workspace:GetServerTimeNow() then Shatter.start(bot, hum) end
+			-- (weakened: stands there dazed until it can go again)
+			if not bot:GetAttribute("Weakened") and (bot:GetAttribute("ShatterReady") or 0) <= workspace:GetServerTimeNow() then
+				Shatter.start(bot, hum)
+			end
 			return
 		end
 		ang += dt * 9 / r
 		root.CFrame = CFrame.new(center.X + math.cos(ang) * r, y, center.Z + math.sin(ang) * r)
+	end)
+	hum.Died:Connect(function()
+		Shatter.stop(bot)
+		root.Anchored = false
+		task.delay(3, function()
+			if bot.Parent then bot:Destroy() end
+		end)
+		if respawn then
+			task.delay(6, function() Shatter.spawnBot(center, name, radius, respawn) end)
+		end
 	end)
 	bot.Destroying:Connect(function() active[bot] = nil end)
 	return bot
