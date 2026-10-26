@@ -100,13 +100,13 @@ def build_head():
 # body: chevron roof plates down the column (root space; the column runs along Y at z = Z0)
 # ---------------------------------------------------------------------------------------------
 Z0 = 0.95
-SEGMENTS = [  # centre y, half width, half height  (from the head down to the tail)
-    (3.85, 1.0, 0.4), (3.05, 1.05, 0.4), (2.25, 1.1, 0.4),             # neck (behind your head)
-    (1.45, 1.4, 0.42), (0.6, 1.45, 0.42), (-0.25, 1.35, 0.42), (-1.1, 1.2, 0.42),  # body
-    (-1.95, 1.0, 0.42), (-2.8, 0.8, 0.42), (-3.6, 0.62, 0.4), (-4.35, 0.45, 0.36),  # tail
+SEGMENTS = [  # centre y, half width, half height  (from the head down to the tail; small gaps
+    (3.85, 1.0, 0.36), (3.05, 1.05, 0.36), (2.25, 1.1, 0.36),          # between them so nothing
+    (1.45, 1.4, 0.38), (0.6, 1.45, 0.38), (-0.25, 1.35, 0.38), (-1.1, 1.2, 0.38),  # overlaps)
+    (-1.95, 1.0, 0.38), (-2.8, 0.8, 0.38), (-3.6, 0.62, 0.36), (-4.35, 0.45, 0.33),
 ]
 TAIL_TIP = V(0, -5.9, Z0 + 0.1)
-NECK_TOP = V(0, 4.3, Z0)  # where the head sits (head space origin goes here)
+NECK_TOP = V(0, 4.9, Z0)  # where the head sits (head space origin goes here)
 
 
 def build_body():
@@ -171,7 +171,7 @@ def ear_clip(poly):
     tris.append(tuple(pts))
     return tris
 WING_OUTLINE = ["S", "E", "N", "K", "W", "Tb"]  # then the two scallops back to the body
-HINGE = V(1.25, 1.55, Z0 + 0.1)   # right wing's hinge, root space
+HINGE = V(1.5, 1.45, Z0 + 0.02)   # right wing's hinge, root space
 HINGE_YAW = 0.12
 
 

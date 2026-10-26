@@ -1,4 +1,4 @@
--- SpinjitzuDragon v13.0  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuDragon v13.1  (ModuleScript in ReplicatedStorage)
 -- Elemental dragon that appears behind the character after Spinjitzu (Rising Dragon), built from
 -- plain parts like the show's energy dragons: solid-looking panels in the element colour with thin
 -- glowing outlines. One tall column behind you: a cap-shaped faceted head on top (V seams down
@@ -116,8 +116,8 @@ function Dragon.new(character, color, highlight, elementName)
 	self.flakeCol = Color3.fromHSV(h, 0.9, 0.85)
 	self.flakeDark = Color3.fromHSV(h, 0.95, 0.55)
 	-- see-through blocks + wings, bright edges + bones, white glow inside (presets can override)
-	self.plateCol = preset.DragonPlate or Color3.fromHSV(h, math.max(s, 0.8), 0.9)
-	self.edgeCol = preset.DragonEdge or self.plateCol:Lerp(WHITE, 0.45)
+	self.plateCol = preset.DragonPlate or Color3.fromHSV(h, math.max(s, 0.85), 0.68)
+	self.edgeCol = preset.DragonEdge or self.plateCol:Lerp(WHITE, 0.3)
 	self.wingCol = preset.DragonWing or self.plateCol
 	self.coreCol = WHITE:Lerp(self.glowCol, 0.15)
 	local okScale, modelScale = pcall(function() return character:GetScale() end)
@@ -148,6 +148,7 @@ function Dragon.new(character, color, highlight, elementName)
 
 	self:_buildBody()
 	self:_buildAura()
+	self:_muteSteps()
 
 	self.folder.Parent = getFxFolder()
 	self:Update(0)
@@ -233,7 +234,7 @@ function Dragon:_buildBody()
 	local glow = Instance.new("Attachment")
 	glow.Position = Vector3.new(0, 0.1, -1.45) * self.hs
 	glow.Parent = self.head
-	self.headLight = make("PointLight", { Color = self.coreCol, Brightness = 2.5, Range = 12 * sc, Shadows = false }, glow)
+	self.headLight = make("PointLight", { Color = self.coreCol, Brightness = 1, Range = 10 * sc, Shadows = false }, glow)
 	-- wings (the same part both sides; the left one is turned round when it's placed)
 	self.wings = {}
 	for _, side in ipairs({ 1, -1 }) do
@@ -372,9 +373,30 @@ function Dragon:Stop()
 	for _, pe in ipairs(self.emitters) do pe.Enabled = false end
 end
 
+-- no footsteps / jump / landing sounds while you fly (the default character sounds live in the
+-- root part; some are only made once you start moving, so catch those too)
+local STEP_SOUNDS = { Running = true, Jumping = true, FreeFalling = true, Landing = true, Climbing = true,
+	GettingUp = true, Died = false, Swimming = true, Splash = true }
+function Dragon:_muteSteps()
+	self.muted = {}
+	local function mute(s)
+		if s:IsA("Sound") and STEP_SOUNDS[s.Name] and not self.muted[s] then
+			self.muted[s] = s.Volume
+			s.Volume = 0
+		end
+	end
+	for _, s in ipairs(self.root:GetChildren()) do mute(s) end
+	self.muteConn = self.root.ChildAdded:Connect(mute)
+	-- the character sound script may set the volume back while you move: keep it at 0
+end
+
 function Dragon:Destroy()
 	if not self.alive then return end
 	self.alive = false
+	if self.muteConn then self.muteConn:Disconnect() end
+	for s, vol in pairs(self.muted or {}) do
+		if s.Parent then s.Volume = vol end
+	end
 	for _, j in pairs(self.motors) do
 		if j.last and j.motor.Parent and j.motor.Transform == j.last then j.motor.Transform = CFrame.identity end
 	end
@@ -440,9 +462,12 @@ function Dragon:Update(dt)
 	workspace:BulkMoveTo(parts, cfs, Enum.BulkMoveMode.FireCFrameChanged)
 
 	if self.light then
-		self.light.Brightness = 3 * a * (0.85 + 0.15 * math.sin(t * 7))
+		self.light.Brightness = 1.2 * a * (0.85 + 0.15 * math.sin(t * 7))
 	end
-	if self.headLight then self.headLight.Brightness = 2.5 * a end
+	if self.headLight then self.headLight.Brightness = a end
+	for s in pairs(self.muted) do
+		if s.Volume ~= 0 then s.Volume = 0 end
+	end
 	return true
 end
 
