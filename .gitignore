@@ -3,3 +3,4 @@
 *.lock
 sourcemap.json
 rojo.exe
+__pycache__/

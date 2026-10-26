@@ -1,4 +1,4 @@
--- SpinjitzuClient v10.0  (LocalScript in StarterPlayer > StarterPlayerScripts)
+-- SpinjitzuClient v10.1  (LocalScript in StarterPlayer > StarterPlayerScripts)
 -- Q toggles Spinjitzu, E switches element, R does the Dragon (spin -> rise -> free flight).
 -- While flying: WASD moves where the camera looks, Space up, Ctrl down.
 -- Renders the tornado / dragon for every player (and NPCs tagged "SpinjitzuNPC"),
@@ -271,6 +271,8 @@ end
 -- dragon visuals for everyone
 ----------------------------------------------------------------------------------------
 
+local creatingDragon = {} -- [character] = true while its dragon is being built
+
 local function killDragon(character, instant)
 	local d = dragons[character]
 	dragons[character] = nil
@@ -297,11 +299,20 @@ local function dragonRefresh(character)
 	if out then
 		local d = dragons[character]
 		if not d then
+			-- (the first dragon can wait a moment for its meshes: don't start a second one meanwhile)
+			if creatingDragon[character] then return end
+			creatingDragon[character] = true
 			d = Dragon.new(character,
 				character:GetAttribute("SpinjitzuColor") or Config.Color,
 				character:GetAttribute("SpinjitzuHighlight") or Config.HighlightColor,
 				character:GetAttribute("SpinjitzuElement"))
+			creatingDragon[character] = nil
 			if not d then return end
+			phase = character:GetAttribute("DragonPhase")
+			if not ((phase == "rise" or phase == "fly" or phase == "land") and isAlive(character)) then
+				d:Destroy() -- it ended while it was being built
+				return
+			end
 			dragons[character] = d
 			dragonRunning[d] = true
 		end
