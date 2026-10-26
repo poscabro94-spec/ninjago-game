@@ -30,8 +30,13 @@ def piece(name, p):
             f"\t\tglow = {{ -- centre, size, tilt, transparency\n{glow}\n\t\t}},\n\t}},\n")
 
 
+DRIPS = ["Wx", "Tb", "P"]
+
+
 def main():
     W = F.WP
+    for k in DRIPS:
+        assert k in W, "wing point %s doesn't exist" % k
     pts = "\n".join("\t\t%s = %s," % (k, vec(v)) for k, v in W.items())
     src = f'''-- DragonModel v4.0  (ModuleScript in ReplicatedStorage) -- GENERATED, don't edit by hand:
 -- change tools/dragon/facet.py and run build.py (python facet.py out renders it).
@@ -52,8 +57,7 @@ return {{
 	WingPoints = {{
 {pts}
 	}},
-	WingCloud = {{ "W", "Tb", "s1", "P", "s2", "B" }}, -- the elemental cloud pours off these
-	WingDrips = {{ "W", "Tb", "P", "s2" }}, -- long drips of energy hang off these
+	WingDrips = {{ {", ".join('"%s"' % k for k in DRIPS)} }}, -- long drips of energy hang off these
 }}
 '''
     with open(OUT, "w") as f:

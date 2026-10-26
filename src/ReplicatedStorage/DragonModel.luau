@@ -540,6 +540,5 @@ return {
 		P = Vector3.new(3.3, -2.45, 0),
 		B = Vector3.new(0.2, -2, 0),
 	},
-	WingCloud = { "W", "Tb", "s1", "P", "s2", "B" }, -- the elemental cloud pours off these
-	WingDrips = { "W", "Tb", "P", "s2" }, -- long drips of energy hang off these
+	WingDrips = { "Wx", "Tb", "P" }, -- long drips of energy hang off these
 }
