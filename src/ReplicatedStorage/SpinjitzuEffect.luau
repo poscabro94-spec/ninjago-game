@@ -1,8 +1,10 @@
--- SpinjitzuEffect v11.0  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuEffect v11.1  (ModuleScript in ReplicatedStorage)
 -- Procedural Ninjago-style Spinjitzu tornado. Solid fuzzy body made of stacked discs of
 -- flattened smoke smears, wrapped in spinning streak rings. Narrow at the ground, wide at
 -- the top. Includes the looping sound. Rendered on every client.
 
+local ContentProvider = game:GetService("ContentProvider")
+local RunService = game:GetService("RunService")
 local Config = require(script.Parent:WaitForChild("SpinjitzuConfig"))
 local Elements = require(script.Parent:WaitForChild("SpinjitzuElements"))
 
@@ -50,6 +52,26 @@ local function make(className, props, parent)
 	end
 	inst.Parent = parent
 	return inst
+end
+
+local function assetId(id)
+	local digits = tostring(id or ""):match("%d+")
+	return digits and "rbxassetid://" .. digits
+end
+
+-- load the element sounds up front so the first Spinjitzu isn't silent while they download
+if RunService:IsClient() then
+	task.spawn(function()
+		local sounds = {}
+		for _, preset in pairs(Config.Presets) do
+			for _, id in pairs(preset.Sounds or {}) do
+				local s = Instance.new("Sound")
+				s.SoundId = assetId(id) or ""
+				table.insert(sounds, s)
+			end
+		end
+		pcall(function() ContentProvider:PreloadAsync(sounds) end)
+	end)
 end
 
 local function newAnchor(name, parent)
@@ -640,18 +662,45 @@ function SpinjitzuEffect:_resetRider(r, initial)
 	r.clear = true
 end
 
--- looping sound: start -> loop [LoopStart, EndStart) while active -> ending on Stop
+-- preset with Sounds: Start -> Loop while active -> End on Stop (three clips)
+-- otherwise one sound: start -> loop [LoopStart, EndStart) while active -> ending on Stop
 function SpinjitzuEffect:_buildSound(baseCF)
+	local clips = self.preset and self.preset.Sounds
 	local soundId = self.preset and self.preset.SoundId or Config.SoundId
-	local digits = tostring(soundId or ""):match("%d+")
-	if not digits then return end
+	if not clips and not assetId(soundId) then return end
 	self.soundPart = newAnchor("Sound", self.folder)
 	self.soundPart.CFrame = baseCF
-	self.sound = make("Sound", {
-		SoundId = "rbxassetid://" .. digits, Volume = Config.SoundVolume, Looped = false,
-		RollOffMode = Enum.RollOffMode.InverseTapered, RollOffMinDistance = 10, RollOffMaxDistance = Config.SoundRange,
-	}, self.soundPart)
-	self.sound:Play()
+	local function newSound(name, id, looped)
+		return make("Sound", {
+			Name = name, SoundId = assetId(id) or "", Volume = Config.SoundVolume, Looped = looped,
+			RollOffMode = Enum.RollOffMode.InverseTapered, RollOffMinDistance = 10, RollOffMaxDistance = Config.SoundRange,
+		}, self.soundPart)
+	end
+	if clips then
+		self.clips = {
+			Start = newSound("Start", clips.Start, false),
+			Loop = newSound("Loop", clips.Loop, true),
+			End = newSound("End", clips.End, false),
+		}
+		self.clips.Start:Play()
+	else
+		self.sound = newSound("Spinjitzu", soundId, false)
+		self.sound:Play()
+	end
+end
+
+-- is the stop sound (or anything else) still audible?
+function SpinjitzuEffect:_soundPlaying()
+	local c = self.clips
+	if c then return c.End.Playing or c.Start.Playing or c.Loop.Playing end
+	return self.sound ~= nil and self.sound.Playing
+end
+
+-- how long after Stop we wait for the stop sound at most
+function SpinjitzuEffect:_soundTail()
+	local c = self.clips
+	if c and c.End.TimeLength > 0 then return math.max(2, c.End.TimeLength + 0.3) end
+	return 2
 end
 
 function SpinjitzuEffect:_applyScale(s)
@@ -731,7 +780,9 @@ function SpinjitzuEffect:Stop()
 	for _, pe in ipairs(self.emitters) do pe.Enabled = false end
 	if self.extraStop then self.extraStop() end
 	local snd = self.sound
-	if snd then
+	if self.clips then
+		self.clips.End:Play() -- Start/Loop fade out under it in Update
+	elseif snd then
 		-- jump to the "stop" part of the sound (or let it finish if already there)
 		if snd.TimePosition < Config.SoundEndStart then
 			snd.TimePosition = Config.SoundEndStart
@@ -764,9 +815,24 @@ function SpinjitzuEffect:Update(dt)
 	local baseCF = CFrame.new(self.root.Position - Vector3.new(0, self.feetOffset, 0))
 
 	-- sound: follow the player, loop while active
-	local snd = self.sound
-	if snd then
-		self.soundPart.CFrame = baseCF
+	if self.soundPart then self.soundPart.CFrame = baseCF end
+	local snd, clips = self.sound, self.clips
+	if clips then
+		local start, loop = clips.Start, clips.Loop
+		if self.stopping then
+			for _, c in ipairs({ start, loop }) do
+				if c.Playing then
+					c.Volume = math.max(0, c.Volume - Config.SoundVolume * dt / Config.SoundFadeOut)
+					if c.Volume <= 0 then c:Stop() end
+				end
+			end
+		elseif not self.looping and start.IsLoaded and start.TimeLength > 0
+			and (not start.Playing or start.TimePosition >= start.TimeLength - 0.02) then
+			-- Start ends exactly where Loop begins
+			self.looping = true
+			loop:Play()
+		end
+	elseif snd then
 		if not self.stopping then
 			if snd.TimePosition >= Config.SoundEndStart - 0.03 or (not snd.Playing and snd.IsLoaded) then
 				snd.TimePosition = Config.SoundLoopStart
@@ -777,7 +843,7 @@ function SpinjitzuEffect:Update(dt)
 
 	-- visuals already gone, just letting the stop sound finish
 	if self.visualsCleared then
-		if (not snd or not snd.Playing or t - self.stopAt > 2) and t - self.stopAt > END_LENGTH then
+		if (not self:_soundPlaying() or t - self.stopAt > self:_soundTail()) and t - self.stopAt > END_LENGTH then
 			self:Destroy()
 			return false
 		end
@@ -794,7 +860,7 @@ function SpinjitzuEffect:Update(dt)
 		end
 	end
 	if self.stopping and self.scale <= 0 then
-		if (snd and snd.Playing) or t - self.stopAt < END_LENGTH then
+		if self:_soundPlaying() or t - self.stopAt < END_LENGTH then
 			for _, child in ipairs(self.folder:GetChildren()) do
 				if child ~= self.soundPart then child:Destroy() end
 			end
@@ -813,7 +879,7 @@ function SpinjitzuEffect:Update(dt)
 			self.scale = math.max(0, self.scale - dt / Config.FadeOutTime)
 		end
 		if self.stopping and self.scale <= 0 then
-			if (snd and snd.Playing) or t - self.stopAt < END_LENGTH then
+			if self:_soundPlaying() or t - self.stopAt < END_LENGTH then
 				for _, child in ipairs(self.folder:GetChildren()) do
 					if child ~= self.soundPart then child:Destroy() end
 				end

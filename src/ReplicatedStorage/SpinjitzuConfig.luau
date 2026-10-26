@@ -1,18 +1,20 @@
--- SpinjitzuConfig v15.2  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuConfig v15.3  (ModuleScript in ReplicatedStorage)
 
 local Config = {}
 
 -- Each element: main colour + highlight (the yellow-ish bands)
 Config.Presets = {
 	-- Color = main colour, Highlight = bright bands, Deep = dark streaks (optional)
-	-- SoundId = "" for no sound (every element uses the Life sound for now)
+	-- Sounds = { Start, Loop, End }: wind-up, seamless loop while spinning, stop sound (asset ids)
+	-- SoundId = one sound for elements without Sounds (looped by time position, see below); "" for no sound
 	-- Sparks = "sparkle" | "embers" | "droplets" | "electric" | "dust" | "snow"
 	-- Base = "fire" | "water" | "lightning" | "earth" | "ice"   (element extras)
 	-- Glow / Band / LightBrightness optionally override the defaults below
 	-- DragonMembrane / DragonBone / DragonHead / DragonGlow / DragonFlame optionally set the dragon's colours
 	Life = {
 		Color = Color3.fromRGB(35, 235, 10), Highlight = Color3.fromRGB(215, 245, 35),
-		SoundId = "95671962797578", Sparks = "sparkle",
+		Sounds = { Start = "78556963713691", Loop = "89882806971818", End = "99341603228804" },
+		Sparks = "sparkle",
 		DragonMembrane = Color3.fromRGB(255, 245, 45), DragonBone = Color3.fromRGB(185, 225, 20),
 		DragonHead = Color3.fromRGB(160, 255, 40), DragonGlow = Color3.fromRGB(110, 255, 220),
 		DragonFlame = ColorSequence.new({
@@ -23,24 +25,29 @@ Config.Presets = {
 	},
 	Fire = {
 		Color = Color3.fromRGB(255, 85, 10), Highlight = Color3.fromRGB(255, 200, 45), Deep = Color3.fromRGB(195, 20, 0),
-		SoundId = "95671962797578", Sparks = "embers", Base = "fire", Glow = 0.6, Band = 0.8, LightBrightness = 6,
+		Sounds = { Start = "76928178554365", Loop = "71894695368576", End = "90408709963452" },
+		Sparks = "embers", Base = "fire", Glow = 0.6, Band = 0.8, LightBrightness = 6,
 		DragonMembrane = Color3.fromRGB(255, 205, 40), DragonBone = Color3.fromRGB(255, 120, 20),
 	},
 	Water = {
 		Color = Color3.fromRGB(20, 150, 255), Highlight = Color3.fromRGB(130, 230, 255), Deep = Color3.fromRGB(0, 70, 190),
-		SoundId = "95671962797578", Sparks = "droplets", Base = "water", Glow = 0.5, Band = 0.6, LightBrightness = 4,
+		Sounds = { Start = "73198328334630", Loop = "103526698126061", End = "70536334014186" },
+		Sparks = "droplets", Base = "water", Glow = 0.5, Band = 0.6, LightBrightness = 4,
 	},
 	Lightning = {
 		Color = Color3.fromRGB(20, 150, 255), Highlight = Color3.fromRGB(130, 225, 255), Deep = Color3.fromRGB(0, 55, 185),
-		SoundId = "95671962797578", Sparks = "electric", Base = "lightning", Glow = 0.6, Band = 0.7, LightBrightness = 6,
+		Sounds = { Start = "115630403946895", Loop = "81234467851579", End = "126141400807685" },
+		Sparks = "electric", Base = "lightning", Glow = 0.6, Band = 0.7, LightBrightness = 6,
 	},
 	Earth = {
 		Color = Color3.fromRGB(170, 105, 30), Highlight = Color3.fromRGB(230, 165, 60), Deep = Color3.fromRGB(100, 58, 15),
-		SoundId = "95671962797578", Sparks = "dust", Base = "earth", Glow = 0.15, Band = 0.6, LightBrightness = 3,
+		Sounds = { Start = "102881755586389", Loop = "71119344253011", End = "77038400882262" },
+		Sparks = "dust", Base = "earth", Glow = 0.15, Band = 0.6, LightBrightness = 3,
 	},
 	Ice = {
 		Color = Color3.fromRGB(175, 228, 250), Highlight = Color3.fromRGB(232, 247, 255), Deep = Color3.fromRGB(120, 200, 240),
-		SoundId = "95671962797578", Sparks = "snow", Base = "ice", Glow = 0.45, Band = 0.6, LightBrightness = 3,
+		Sounds = { Start = "74227630958155", Loop = "110744932507680", End = "134665037382213" },
+		Sparks = "snow", Base = "ice", Glow = 0.45, Band = 0.6, LightBrightness = 3,
 	},
 	-- the combined Tornado of Creation (blue bottom -> orange -> gold -> white top)
 	Creation = {
@@ -108,13 +115,15 @@ Config.CreationScale = 4          -- size of the big tornado
 Config.CreationBot = true         -- 4 bots that demo it on a loop
 
 
--- Sound: plays from the start, loops [SoundLoopStart -> SoundEndStart] while active,
+-- Sound: elements with Sounds play Start, then Loop until Spinjitzu is turned off, then End.
+-- A single SoundId plays from the start, loops [SoundLoopStart -> SoundEndStart] while active,
 -- and jumps to SoundEndStart (the "stop" part) when Spinjitzu is turned off.
-Config.SoundId = "95671962797578" -- fallback for custom colours (each element preset has its own SoundId)
+Config.SoundId = "95671962797578" -- fallback for custom colours and presets without Sounds
 Config.SoundVolume = 0.4
 Config.SoundRange = 80         -- studs until it's silent for other players
 Config.SoundEndStart = 5.5     -- where the stopping sound begins
 Config.SoundLoopStart = 1.0    -- where the loop jumps back to (skips the wind-up at the start)
+Config.SoundFadeOut = 0.12     -- Start/Loop fade out this fast when the End sound kicks in
 
 -- Shape (studs, scaled by character size). Narrow at the ground, wide at the top.
 Config.Height = 9
