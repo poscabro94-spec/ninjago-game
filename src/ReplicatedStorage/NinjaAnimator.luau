@@ -1,4 +1,4 @@
--- NinjaAnimator v1.4  (ModuleScript in ReplicatedStorage)
+-- NinjaAnimator v1.5  (ModuleScript in ReplicatedStorage)
 -- Procedural player animations, no animation assets: idle, walk, run, jump, fall, landing,
 -- plus the parkour moves (vault, mantle, wall run). Every client animates every player, so
 -- everyone sees the same thing. SpinjitzuClient calls NinjaAnimator.Step() in Stepped
@@ -6,7 +6,17 @@
 
 local Players = game:GetService("Players")
 local GoldenWeapons = require(game:GetService("ReplicatedStorage"):WaitForChild("GoldenWeapons"))
-local ElementPowers = require(game:GetService("ReplicatedStorage"):WaitForChild("ElementPowers"))
+-- optional: if the ElementPowers module is missing, everything else still animates
+local ElementPowers
+do
+	local m = game:GetService("ReplicatedStorage"):WaitForChild("ElementPowers", 5)
+	local ok, mod = pcall(function() return m and require(m) end)
+	if ok and mod then
+		ElementPowers = mod
+	else
+		warn("[NinjaAnimator] ElementPowers module missing or broken (ReplicatedStorage): no power arm moves", mod)
+	end
+end
 
 local Animator = {}
 
@@ -243,7 +253,7 @@ function Animator.Step(dt)
 				end
 				st.wasAir = not onGround and move == nil
 				pose = GoldenWeapons.Step(character, root, pose, dt, move == nil)
-				pose = ElementPowers.Step(character, root, pose, dt, move == nil)
+				if ElementPowers then pose = ElementPowers.Step(character, root, pose, dt, move == nil) end
 
 				local a = 1 - math.exp(-dt * (move and 22 or 14))
 				for key, j in pairs(st.joints) do
