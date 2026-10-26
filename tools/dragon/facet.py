@@ -182,29 +182,55 @@ def body_ring(y, w, d):
     return pts
 
 
-def build_body():
-    p = Piece()
-    rings = [body_ring(*r) for r in BODY_RINGS]
+TAIL_FROM = 7   # rings from this one down are the tail: separate segments that swing
+
+
+def _loft_rings(p, rings, tip=None, top=None):
     n = len(rings[0])
-    seen = set()
-    def edge(a, b):
-        key = tuple(sorted((tuple(np.round(a, 4)), tuple(np.round(b, 4)))))
-        if key not in seen:
-            seen.add(key)
-            p.edge(a, b, 0.05)
     for i in range(len(rings) - 1):
         for k in range(n):
             k2 = (k + 1) % n
             a, b, c, d = rings[i][k], rings[i][k2], rings[i + 1][k2], rings[i + 1][k]
             p.tri(a, b, c); p.tri(a, c, d)
-            edge(a, b); edge(b, c); edge(c, d); edge(d, a)
     for k in range(n):
         k2 = (k + 1) % n
-        a, b = rings[-1][k], rings[-1][k2]
-        p.tri(a, b, TAIL_TIP); edge(a, TAIL_TIP)
-        a, b = rings[0][k], rings[0][k2]
-        p.tri(b, a, V(0, BODY_RINGS[0][0] + 0.05, BODY_FRONT + 0.5))
+        if tip is not None:
+            p.tri(rings[-1][k], rings[-1][k2], tip)
+        if top is not None:
+            p.tri(rings[0][k2], rings[0][k], top)
+
+
+def spine(i):
+    """the middle of body ring i (root space): where the tail segments bend"""
+    y, w, d = BODY_RINGS[i]
+    return V(0, y, BODY_FRONT + d * BODY_GROW / 2)
+
+
+def build_body():
+    """the neck + body (one piece, root space); the tail is build_tail()"""
+    p = Piece()
+    rings = [body_ring(*r) for r in BODY_RINGS[:TAIL_FROM + 1]]
+    _loft_rings(p, rings, top=V(0, BODY_RINGS[0][0] + 0.05, BODY_FRONT + 0.6))
     return p
+
+
+def build_tail():
+    """(joints, segments): joint i is where segment i hangs from (root space); segment i's
+    triangles are relative to its joint. The last joint is the tail tip."""
+    rings = [body_ring(*r) for r in BODY_RINGS]
+    joints, segs = [], []
+    for i in range(TAIL_FROM, len(BODY_RINGS)):
+        j = spine(i)
+        joints.append(j)
+        s = Piece()
+        last = i == len(BODY_RINGS) - 1
+        if last:
+            _loft_rings(s, [[q - j for q in rings[i]]], tip=TAIL_TIP - j)
+        else:
+            _loft_rings(s, [[q - j for q in rings[i]], [q - j for q in rings[i + 1]]])
+        segs.append(s)
+    joints.append(TAIL_TIP)
+    return joints, segs
 
 
 # ---------------------------------------------------------------------------------------------
@@ -302,9 +328,18 @@ HEAD_SCALE = 1.15
 HEAD_PITCH = math.pi / 2   # snout straight up the column
 
 
+def mouth():
+    """the middle of the open mouth in root space (head at rest)"""
+    R = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]]) * HEAD_SCALE   # Angles(pi/2, 0, 0)
+    return R @ V(0, -0.65, -3.0) + NECK_TOP
+
+
 def placed(flap=0.0):
     """(piece, cf in root space) exactly like SpinjitzuDragon places them"""
     out = [(build_body(), T([0, 0, 0]))]
+    joints, segs = build_tail()
+    for j, s in zip(joints, segs):
+        out.append((s, T(j)))
     out.append((build_head(), mul(T(NECK_TOP), ang(HEAD_PITCH, 0, 0), (np.eye(3) * HEAD_SCALE, np.zeros(3)))))
     w = build_wing()
     for side in (1, -1):

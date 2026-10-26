@@ -1,4 +1,4 @@
--- ElementPowersServer v2.2  (Script in ServerScriptService)
+-- ElementPowersServer v2.3  (Script in ServerScriptService)
 -- The elemental powers (settings in ElementPowers): Lightning, Fire, Ice, Earth.
 -- The client (ElementPowersClient) sends:
 --   "ball", aim         tap left click: next shot of the combo
@@ -52,7 +52,10 @@ local function ready(player)
 	local P = Powers.ByElement[elementOf(player)]
 	if not P then return nil end
 	if character:FindFirstChildOfClass("Tool") then return nil end
-	if character:GetAttribute("SpinjitzuActive") or character:GetAttribute("DragonPhase") or character:GetAttribute("CreationPhase") then
+	-- (on the Rising Dragon it's fine: the power comes out of the dragon's mouth)
+	local dragon = character:GetAttribute("DragonPhase")
+	if character:GetAttribute("SpinjitzuActive") or character:GetAttribute("CreationPhase")
+		or (dragon and dragon ~= "rise" and dragon ~= "fly") then
 		return nil
 	end
 	return character, root, P
@@ -531,9 +534,10 @@ local function throw(key, check, aim, npc)
 		end
 		-- the server doesn't see the arm animation: let go about where the palm is
 		local x = ball.hands == "R" and 1.0 or (ball.hands == "L" and -1.0 or 0)
-		local origin = root.CFrame:PointToWorldSpace(Vector3.new(x, 1.0, -1.8))
+		local mouth = Powers.DragonMouth(character)
+		local origin = mouth or root.CFrame:PointToWorldSpace(Vector3.new(x, 1.0, -1.8))
 		local dir = aim - origin
-		if dir.Magnitude < 3 or dir.Unit:Dot(root.CFrame.LookVector) < -0.2 then dir = root.CFrame.LookVector end
+		if dir.Magnitude < 3 or (not mouth and dir.Unit:Dot(root.CFrame.LookVector) < -0.2) then dir = root.CFrame.LookVector end
 		launchShot(P, character, origin, dir.Unit, ball)
 	end)
 end
@@ -546,7 +550,8 @@ local beams = {}   -- [key] = { character, check, P, npc, last, total, ticks, ex
 local clashes = {} -- { a, b (keys), t (0 = clash point at a's hands, 1 = at b's), born, point }
 
 local function meetPoint(root)
-	return root.CFrame:PointToWorldSpace(Vector3.new(0, 1.1, -2.4)) -- where the two hand beams meet
+	-- where the two hand beams meet (or the dragon's mouth, on the Rising Dragon)
+	return Powers.DragonMouth(root.Parent) or root.CFrame:PointToWorldSpace(Vector3.new(0, 1.1, -2.4))
 end
 
 local function stopBeam(key, force)

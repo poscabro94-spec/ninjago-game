@@ -1,4 +1,4 @@
--- SpinjitzuDragon v16.1  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuDragon v17.0  (ModuleScript in ReplicatedStorage)
 -- Elemental dragon that appears behind the character after Spinjitzu (Rising Dragon), built from
 -- plain parts like the show's energy dragons: solid-looking panels in the element colour with thin
 -- glowing outlines. One tall column behind you: a cap-shaped faceted head on top (V seams down
@@ -30,6 +30,12 @@ local function approach(v, target, step)
 	return math.max(target, v - step)
 end
 local function kp(t, v) return NumberSequenceKeypoint.new(t, v) end
+-- the rotation that turns direction a onto direction b (both unit)
+local function rotBetween(a, b)
+	local axis = a:Cross(b)
+	if axis.Magnitude < 1e-6 then return CFrame.identity end
+	return CFrame.fromAxisAngle(axis.Unit, math.acos(math.clamp(a:Dot(b), -1, 1)))
+end
 
 local function make(className, props, parent)
 	local inst = Instance.new(className)
@@ -76,15 +82,17 @@ end
 -- character poses while the dragon is out (same joint space as SpinjitzuEffect)
 local POSE_JOINTS = { RightShoulder = true, LeftShoulder = true, RightHip = true, LeftHip = true, Waist = true }
 local JOINT_ALIAS = { RootJoint = "Root" }
+-- superhero: right fist punched straight up, left arm down by your side, legs together. Flying
+-- (you're lying along the dragon) that's the fist out in front, Superman-style.
 local HOVER_POSE = {
-	RightShoulder = CFrame.Angles(0.1, 0, 0.45),  -- arms slightly out and down
-	LeftShoulder  = CFrame.Angles(0.1, 0, -0.45),
-	RightHip      = CFrame.Angles(0, 0, 0.03),    -- legs straight, together
-	LeftHip       = CFrame.Angles(0, 0, -0.03),
+	RightShoulder = CFrame.Angles(0.15, 0, 2.95),
+	LeftShoulder  = CFrame.Angles(-0.05, 0, -0.12),
+	RightHip      = CFrame.Angles(0, 0, 0.02),
+	LeftHip       = CFrame.Angles(0.15, 0, -0.02),    -- one knee a touch forward
 }
 local FLY_POSE = {
-	RightShoulder = CFrame.Angles(-0.3, 0, 0.25),  -- arms swept back along the body
-	LeftShoulder  = CFrame.Angles(-0.3, 0, -0.25),
+	RightShoulder = CFrame.Angles(0.05, 0, 3.0),
+	LeftShoulder  = CFrame.Angles(-0.25, 0, -0.08),   -- along your side
 	RightHip      = CFrame.Angles(-0.1, 0, 0.02),
 	LeftHip       = CFrame.Angles(-0.1, 0, -0.02),
 }
@@ -121,6 +129,7 @@ function Dragon.new(character, color, highlight, elementName)
 	self.plateCol = preset.DragonPlate or Color3.fromHSV(h, math.max(s, 0.8), 0.75)
 	self.wingCol = preset.DragonWing or Color3.fromHSV(h, math.max(s, 0.8) * 0.75, 1)
 	self.toothCol = preset.DragonTeeth or self.plateCol
+	self.boneCol = preset.DragonBone or self.plateCol
 	self.edgeCol = preset.DragonEdge or self.wingCol:Lerp(WHITE, 0.3)
 	self.coreCol = WHITE:Lerp(self.glowCol, 0.15)
 	local okScale, modelScale = pcall(function() return character:GetScale() end)
@@ -131,7 +140,7 @@ function Dragon.new(character, color, highlight, elementName)
 	self.vel = Vector3.zero
 	self.phase = "rise"
 	self.alive, self.stopping = true, false
-	self.fadeParts, self.fadeBeams, self.emitters = {}, {}, {}
+	self.fadeParts, self.fadeBeams, self.emitters, self.trails = {}, {}, {}, {}
 
 	self.motors = {}
 	for _, m in ipairs(character:GetDescendants()) do
@@ -151,11 +160,7 @@ function Dragon.new(character, color, highlight, elementName)
 
 	self:_buildBody()
 	self:_buildAura()
-	-- a glowing outline round the whole silhouette
-	self.outline = make("Highlight", {
-		Adornee = self.folder, FillTransparency = 1, OutlineColor = self.wingCol:Lerp(WHITE, 0.2),
-		OutlineTransparency = 1, DepthMode = Enum.HighlightDepthMode.Occluded,
-	}, self.folder)
+
 	self:_muteSteps()
 
 	self.folder.Parent = getFxFolder()
@@ -210,20 +215,37 @@ function Dragon:_mist(parent, size)
 	})
 end
 
+-- a ribbon of light that trails behind a point as it moves
+function Dragon:_trail(att, width, life)
+	local a0, a1 = Instance.new("Attachment"), Instance.new("Attachment")
+	a0.Position, a1.Position = att.Position + Vector3.new(0, width / 2, 0), att.Position - Vector3.new(0, width / 2, 0)
+	a0.Parent, a1.Parent = att.Parent, att.Parent
+	local tr = make("Trail", {
+		Attachment0 = a0, Attachment1 = a1, Lifetime = life, MinLength = 0.05, FaceCamera = true,
+		LightEmission = 1, LightInfluence = 0, Brightness = 3,
+		Color = ColorSequence.new(self.edgeCol, self.wingCol),
+		Transparency = NumberSequence.new({ kp(0, 0.2), kp(1, 1) }),
+		WidthScale = NumberSequence.new({ kp(0, 1), kp(1, 0) }),
+	}, att.Parent)
+	table.insert(self.trails, tr)
+	-- orbiters move their attachment: keep the pair on it
+	return tr, a0, a1
+end
+
 -- green-flame wisps licking up off it (fire texture in the dragon's two shades)
 function Dragon:_flames(parent, size)
 	self:_emitter(parent, {
 		Texture = TEX_FIRE, Color = ColorSequence.new(self.wingCol, self.plateCol), LightEmission = 1, Brightness = 3,
 		Size = NumberSequence.new({ kp(0, 0.9 * size), kp(0.5, 1.3 * size), kp(1, 0.3 * size) }),
 		Transparency = NumberSequence.new({ kp(0, 0.6), kp(0.2, 0.15), kp(1, 1) }),
-		Lifetime = NumberRange.new(0.5, 1.0), Rate = 9, Speed = NumberRange.new(1, 3),
+		Lifetime = NumberRange.new(0.5, 1.0), Rate = 16, Speed = NumberRange.new(1, 3),
 		SpreadAngle = Vector2.new(180, 180), Acceleration = Vector3.new(0, 8, 0), Drag = 1,
 		Rotation = NumberRange.new(0, 360), RotSpeed = NumberRange.new(-120, 120),
 	})
 end
 
-function Dragon:_facets(root, data, scale, color)
-	local tr = data.tris
+function Dragon:_facets(root, data, scale, color, bones)
+	local tr = data.tris or {}
 	for i = 1, #tr, 9 do
 		local a = Vector3.new(tr[i], tr[i + 1], tr[i + 2]) * scale
 		local b = Vector3.new(tr[i + 3], tr[i + 4], tr[i + 5]) * scale
@@ -231,6 +253,18 @@ function Dragon:_facets(root, data, scale, color)
 		if (b - a):Cross(c - a).Magnitude > 1e-6 then
 			for _, w in ipairs(triangle(a, b, c, 0.05 * scale)) do
 				self:_add(root, "WedgePart", w[1], w[2], color or self.plateCol, 0.2)
+			end
+		end
+	end
+	-- bones across the wings (the thicker lines in the data), in the darker shade: no glowing outlines
+	if bones then
+		local e = data.edges or {}
+		for i = 1, #e, 7 do
+			local a = Vector3.new(e[i], e[i + 1], e[i + 2]) * scale
+			local b = Vector3.new(e[i + 3], e[i + 4], e[i + 5]) * scale
+			local th = e[i + 6] * scale * 1.8
+			if e[i + 6] >= 0.07 and (b - a).Magnitude > 1e-4 then
+				self:_add(root, "Part", CFrame.lookAt((a + b) / 2, b), Vector3.new(th, th, (b - a).Magnitude + th), self.boneCol, 0)
 			end
 		end
 	end
@@ -247,7 +281,7 @@ function Dragon:_facets(root, data, scale, color)
 		end
 	end
 	-- white light: blocks, oval eyes (a sphere mesh stretched), and flat triangles (inside the mouth)
-	for _, g in ipairs(data.glow) do
+	for _, g in ipairs(data.glow or {}) do
 		local tilt = g[3]
 		local p = self:_add(root, "Part", CFrame.new(g[1] * scale) * CFrame.Angles(tilt.X, tilt.Y, tilt.Z), g[2] * scale, self.coreCol, g[4])
 		if g[5] == "oval" then
@@ -276,6 +310,20 @@ function Dragon:_buildBody()
 	-- the column: neck, body and tail down your back
 	self.body = self:_piece("Body")
 	self:_facets(self.body, M.Body, sc)
+	-- the tail: a chain of segments that swing (see _placeTail)
+	self.tail = {}
+	for i, seg in ipairs(M.Tail) do
+		local root = self:_piece("Tail")
+		self:_facets(root, seg, sc)
+		self.tail[i] = { root = root, rest = M.TailJoints[i] * sc, len = (M.TailJoints[i + 1] - M.TailJoints[i]).Magnitude * sc }
+	end
+	self.tailTip = M.TailJoints[#M.TailJoints] * sc
+	local tip = Instance.new("Attachment")
+	tip.Position = M.TailJoints[#M.TailJoints] - M.TailJoints[#M.Tail]
+	tip.Position *= sc
+	tip.Parent = self.tail[#self.tail].root
+	self:_flames(tip, sc)
+	self:_trail(tip, 0.5 * sc, 0.45)
 	-- the head on top
 	self.head = self:_piece("Head")
 	self:_facets(self.head, M.Head, self.hs)
@@ -291,7 +339,7 @@ function Dragon:_buildBody()
 	self.wings, self.drips = {}, {}
 	for _, side in ipairs({ 1, -1 }) do
 		local wing = self:_piece("Wing")
-		self:_facets(wing, M.Wing, ws, self.wingCol)
+		self:_facets(wing, M.Wing, ws, self.wingCol, true)
 		local function point(name)
 			local a = Instance.new("Attachment")
 			a.Position = M.WingPoints[name] * ws
@@ -304,6 +352,8 @@ function Dragon:_buildBody()
 			self:_flames(point(name), sc)
 		end
 		self:_flames(point("W"), sc)
+		self:_trail(point("Wx"), 0.6 * ws, 0.4)
+		self:_trail(point("Tb"), 0.6 * ws, 0.4)
 		for _, name in ipairs(M.WingDrips) do
 			local top = point(name)
 			local bottom = Instance.new("Attachment")
@@ -331,6 +381,30 @@ function Dragon:_buildBody()
 		Transparency = NumberSequence.new({ kp(0, 0.1), kp(0.7, 0.3), kp(1, 1) }),
 		Lifetime = NumberRange.new(0.3, 0.55), Rate = 30, Speed = NumberRange.new(22 * sc, 40 * sc),
 		SpreadAngle = Vector2.new(180, 180), Drag = 2,
+	})
+	-- wisps of energy spiralling round the dragon, leaving trails
+	self.orbiters = {}
+	for i = 1, 3 do
+		local a = Instance.new("Attachment")
+		a.Parent = self.anchor
+		local _, t0, t1 = self:_trail(a, 0.35 * sc, 0.6)
+		self:_emitter(a, {
+			Texture = TEX_SPARK, Color = ColorSequence.new(self.edgeCol, self.wingCol), LightEmission = 1, Brightness = 3,
+			Size = NumberSequence.new({ kp(0, 0.35 * sc), kp(1, 0) }), Lifetime = NumberRange.new(0.3, 0.6),
+			Rate = 25, Speed = NumberRange.new(0.5, 2), SpreadAngle = Vector2.new(180, 180),
+		})
+		self.orbiters[i] = { att = a, t0 = t0, t1 = t1, phase = (i - 1) * math.pi * 2 / 3 }
+	end
+	-- motes of light floating up all round it
+	local motes = Instance.new("Attachment")
+	motes.Position = Vector3.new(0, 1, 1) * sc
+	motes.Parent = self.anchor
+	self:_emitter(motes, {
+		Texture = TEX_SPARK, Color = ColorSequence.new(self.edgeCol, self.wingCol), LightEmission = 1, Brightness = 3,
+		Size = NumberSequence.new({ kp(0, 0.25 * sc), kp(0.5, 0.35 * sc), kp(1, 0) }),
+		Transparency = NumberSequence.new({ kp(0, 0.2), kp(1, 1) }),
+		Lifetime = NumberRange.new(1, 2), Rate = 25, Speed = NumberRange.new(2 * sc, 6 * sc),
+		SpreadAngle = Vector2.new(180, 180), Acceleration = Vector3.new(0, 3, 0), Drag = 1.5,
 	})
 	-- mist along the body
 	for _, y in ipairs({ 3.5, 1, -1.5, -4 }) do
@@ -387,6 +461,38 @@ function Dragon:_placeBody(rootCF, flap, effort, beat, parts, cfs)
 		local hinge = CFrame.new(side * M.Hinge.X * sc, M.Hinge.Y * sc, M.Hinge.Z * sc)
 			* CFrame.Angles(0, -side * M.HingeYaw, 0) * CFrame.Angles(0, 0, side * (M.WingRaise + flap))
 		put(wing, rootCF * hinge * (side < 0 and CFrame.Angles(0, math.pi, 0) or CFrame.identity))
+	end
+	-- tail: each joint springs toward where it should be (swaying a little), so the tail swings and
+	-- lags behind when you turn or speed up; every segment keeps its length
+	local dt = math.min(self.dt or 0, 1 / 20)
+	local n = #self.tail
+	local points = { rootCF * self.tail[1].rest } -- (the top of the tail stays on the body)
+	self.tailPos, self.tailVel = self.tailPos or {}, self.tailVel or {}
+	for i = 1, n do
+		local restLocal = i < n and self.tail[i + 1].rest or self.tailTip
+		local f = i / n
+		local sway = Vector3.new(math.sin(t * 2.2 - i * 0.8) * 0.45 * f, 0, math.cos(t * 1.7 - i * 0.6) * 0.2 * f) * sc
+		local want = rootCF * (restLocal + sway)
+		local pos, vel = self.tailPos[i], self.tailVel[i]
+		if not pos or (pos - want).Magnitude > 25 * sc then pos, vel = want, Vector3.zero end
+		vel += ((want - pos) * 70 - vel * 11) * dt
+		pos += vel * dt
+		local d = pos - points[i]
+		if d.Magnitude > 1e-3 then pos = points[i] + d.Unit * self.tail[i].len end
+		self.tailPos[i], self.tailVel[i] = pos, vel
+		points[i + 1] = pos
+	end
+	for i, seg in ipairs(self.tail) do
+		local restDir = ((i < n and self.tail[i + 1].rest or self.tailTip) - seg.rest).Unit
+		local nowDir = rootCF:VectorToObjectSpace(points[i + 1] - points[i]).Unit
+		put(seg.root, rootCF * CFrame.new(rootCF:PointToObjectSpace(points[i])) * rotBetween(restDir, nowDir))
+	end
+	-- wisps spiralling round it
+	for _, o in ipairs(self.orbiters) do
+		local ang = t * 2.4 + o.phase
+		local pos = Vector3.new(math.cos(ang) * 3.2, math.sin(t * 1.3 + o.phase) * 3.5 + 1, math.sin(ang) * 3.2 + 1.1) * sc
+		local half = (o.t0.Position - o.t1.Position) / 2
+		o.att.Position, o.t0.Position, o.t1.Position = pos, pos + half, pos - half
 	end
 	-- the column of energy under you while rising
 	local want = (self.phase == "rise" and not self.stopping) and 1 or 0
@@ -449,6 +555,7 @@ function Dragon:Stop()
 	if self.stopping then return end
 	self.stopping = true
 	for _, pe in ipairs(self.emitters) do pe.Enabled = false end
+	for _, tr in ipairs(self.trails) do tr.Enabled = false end
 end
 
 -- no footsteps / jump / landing sounds while you fly (the default character sounds live in the
@@ -503,7 +610,6 @@ function Dragon:Update(dt)
 	if a ~= prev or dt == 0 then
 		for _, fp in ipairs(self.fadeParts) do fp[1].Transparency = 1 - (1 - fp[2]) * a end
 		for _, fb in ipairs(self.fadeBeams) do fb[1].Transparency = NumberSequence.new(1 - (1 - fb[2]) * a) end
-		if self.outline then self.outline.OutlineTransparency = 1 - a end
 	end
 
 	-- how fast are we really moving? (works for you, other players and bots alike)

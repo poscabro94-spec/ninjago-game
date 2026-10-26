@@ -16,7 +16,7 @@ Config.Presets = {
 		Color = Color3.fromRGB(35, 235, 10), Highlight = Color3.fromRGB(215, 245, 35),
 		Sounds = { Start = "78556963713691", Loop = "89882806971818", End = "99341603228804" },
 		Sparks = "sparkle",
-		DragonPlate = Color3.fromRGB(45, 190, 25), DragonWing = Color3.fromRGB(205, 240, 25), -- green + lime
+		DragonPlate = Color3.fromRGB(30, 150, 25), DragonWing = Color3.fromRGB(110, 210, 20), -- green + lime (Neon brightens them)
 		DragonFlame = ColorSequence.new({
 			ColorSequenceKeypoint.new(0, Color3.fromRGB(245, 255, 130)),
 			ColorSequenceKeypoint.new(0.45, Color3.fromRGB(90, 255, 90)),

@@ -39,6 +39,8 @@ DRIPS = ["Wx", "Tb", "P1", "P"]
 
 
 def main():
+    joints, segs = F.build_tail()
+    tail = "".join(piece("[%d]" % (i + 1), s).replace("\t[%d] = {" % (i + 1), "\t\t{") for i, s in enumerate(segs))
     W = F.WP
     for k in DRIPS:
         assert k in W, "wing point %s doesn't exist" % k
@@ -53,9 +55,16 @@ def main():
 
 return {{
 {piece("Head", F.build_head())}{piece("Body", F.build_body())}{piece("Wing", F.build_wing())}
+	-- the tail: segments that swing (joint i = where segment i hangs from, root space; segment i's
+	-- triangles are relative to its joint; the last joint is the tip)
+	TailJoints = {{ {", ".join(vec(j) for j in joints)} }},
+	Tail = {{
+{tail}	}},
+
 	NeckTop = {vec(F.NECK_TOP)}, -- where the head sits (root space)
 	HeadPitch = {n(F.HEAD_PITCH)}, -- snout turned up the column
 	HeadScale = {F.HEAD_SCALE},
+	Mouth = {vec(F.mouth())}, -- the middle of the open mouth (root space, head at rest): powers come out here
 	TailTip = {vec(F.TAIL_TIP)},
 	Hinge = {vec(F.HINGE)}, -- right wing's hinge (root space)
 	HingeYaw = {F.HINGE_YAW}, -- wings swept back a little

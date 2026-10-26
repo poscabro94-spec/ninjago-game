@@ -1,4 +1,4 @@
--- ElementPowersClient v3.1  (LocalScript in StarterPlayerScripts)
+-- ElementPowersClient v3.2  (LocalScript in StarterPlayerScripts)
 -- Your elemental power button (empty hands, any element): tap left click = the shot combo, hold
 -- left click = beam. In a beam clash: mash F (bar at the bottom shows who's winning).
 -- Turns you toward where you aim. Draws the effects for
@@ -40,7 +40,9 @@ local function canUse()
 	local character = player.Character
 	local hum = character and character:FindFirstChildOfClass("Humanoid")
 	if not hum or hum.Health <= 0 or character:FindFirstChildOfClass("Tool") then return false end
-	if character:GetAttribute("SpinjitzuActive") or character:GetAttribute("DragonPhase") or character:GetAttribute("CreationPhase") then
+	local dragon = character:GetAttribute("DragonPhase") -- (on the Rising Dragon: out of its mouth)
+	if character:GetAttribute("SpinjitzuActive") or character:GetAttribute("CreationPhase")
+		or (dragon and dragon ~= "rise" and dragon ~= "fly") then
 		return false
 	end
 	return Powers.ByElement[player:GetAttribute("SpinjitzuElement") or Config.Element] ~= nil
@@ -49,7 +51,7 @@ end
 -- turn to face the aim (only sideways), so the shot / beam goes where you point
 local function face(aim)
 	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-	if not root then return end
+	if not root or player.Character:GetAttribute("DragonPhase") then return end -- (the dragon flight steers)
 	local flat = Vector3.new(aim.X, root.Position.Y, aim.Z)
 	if (flat - root.Position).Magnitude > 1 then root.CFrame = CFrame.lookAt(root.Position, flat) end
 end
@@ -370,9 +372,11 @@ local function updateBeams(dt, rebendNow)
 				drawn[character] = d
 			end
 			local pR, pL = palm(handR), palm(handL)
+			local mouth = Powers.DragonMouth(character)
+			if mouth then pR, pL = mouth, mouth end -- (the Rising Dragon breathes it)
 			local dir = aim - (pR + pL) / 2
 			dir = dir.Magnitude > 0.1 and dir.Unit or root.CFrame.LookVector
-			local meet = (pR + pL) / 2 + dir * 1.3
+			local meet = (pR + pL) / 2 + dir * (mouth and 0.6 or 1.3)
 			local hit, stop
 			if typeof(clashPoint) == "Vector3" then
 				stop = clashPoint -- pushing against the other beam

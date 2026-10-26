@@ -1,4 +1,4 @@
--- ElementPowers v3.0  (ModuleScript in ReplicatedStorage)
+-- ElementPowers v3.1  (ModuleScript in ReplicatedStorage)
 -- Elemental powers, used with empty hands (no Golden Weapon out): all six elements.
 --   tap left click:    a shot from the right hand -> the left hand -> a big one from both hands
 --   hold left click:   both hands out, a beam from each meets in front of you and one big beam
@@ -291,6 +291,27 @@ function Powers.Step(character, root, pose, dt, armsFree)
 		out.Waist = R(0.08, 0, 0) * (out.Waist or CFrame.identity) -- lean back into it
 	end
 	return out
+end
+
+-- Rising Dragon: while the dragon is out (rising / flying) your power comes out of its mouth.
+-- The mouth's spot is in DragonModel (root space, head at rest); nil = not on the dragon
+local DragonModel -- (loaded the first time it's needed; false = missing)
+function Powers.DragonMouth(character)
+	local phase = character and character:GetAttribute("DragonPhase")
+	if phase ~= "rise" and phase ~= "fly" then return nil end
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root then return nil end
+	if DragonModel == nil then
+		local m = script.Parent:FindFirstChild("DragonModel")
+		local ok, res = pcall(function() return m and require(m) end)
+		DragonModel = ok and res or false
+	end
+	if not DragonModel then return nil end
+	local config = script.Parent:FindFirstChild("SpinjitzuConfig")
+	local okC, Config = pcall(function() return require(config) end)
+	local okS, s = pcall(function() return character:GetScale() end)
+	local scale = (okS and s or 1) * (okC and Config.DragonScale or 1)
+	return root.CFrame:PointToWorldSpace(DragonModel.Mouth * scale)
 end
 
 return Powers
