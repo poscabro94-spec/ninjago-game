@@ -53,6 +53,7 @@ def main():
     head, head_hot = G.build_head()
     jaw, jaw_hot = G.build_jaw()
     neck = G.build_neck()
+    chest = G.build_chest()
     inner, inner_b, outer, outer_b = G.build_wing()
     out = []
     total = 0
@@ -62,39 +63,39 @@ def main():
     total += mesh_entry("JawHot", seams(jaw) + jaw_hot.tris, out)
     total += mesh_entry("NeckFace", neck.tris, out)
     total += mesh_entry("NeckHot", seams(neck), out)
+    total += mesh_entry("ChestFace", chest.tris, out)
+    total += mesh_entry("ChestHot", seams(chest), out)
     total += mesh_entry("InnerMembrane", inner.tris, out)
-    total += mesh_entry("InnerHot", seams(inner_b), out)
+    total += mesh_entry("InnerHot", seams(inner_b) + inner_b.tris, out)
     total += mesh_entry("OuterMembrane", outer.tris, out)
-    total += mesh_entry("OuterHot", seams(outer_b), out)
+    total += mesh_entry("OuterHot", seams(outer_b) + outer_b.tris, out)
 
     P = G.WING
-    E = G.wing_outline()
     pts = "\n".join("\t\t%s = %s," % (k, vec(v)) for k, v in P.items())
-    # glow lines along the wing (halo beams): which piece they ride on, then the points
-    halo = []
-    halo.append(("Inner", [P["S"], P["W"]], 0.55))
-    halo.append(("Inner", [P["W"], P["F4"]], 0.35))
-    for f in ["F1", "F2", "F3"]:
-        halo.append(("Outer", [P["W"], P[f]], 0.45 if f == "F1" else 0.35))
-    for name in ["F1F2", "F2F3", "F3F4"]:
-        halo.append(("Outer", E[name], 0.25))
-    halo.append(("Inner", E["F4H"], 0.25))
-    halo_s = "\n".join('\t\t{ "%s", %.2f, { %s } },' % (piece, w, ", ".join(vec(p) for p in line)) for piece, line, w in halo)
-    # where the elemental cloud pours off the wings
-    cloud = [("Outer", P["F1"]), ("Outer", P["F2"]), ("Outer", P["F3"]), ("Outer", E["F1F2"][3]), ("Outer", E["F2F3"][3]),
-             ("Inner", P["F4"]), ("Outer", E["F3F4"][3]), ("Inner", E["F4H"][4]), ("Inner", P["H"])]
+    halo = [
+        ("Inner", [P["S"], P["W"]], 0.65), ("Inner", [P["W"], P["P2"]], 0.3),
+        ("Inner", [P["P1"], P["n2"], P["P2"], P["n3"], P["P3"], P["B"]], 0.3),
+        ("Outer", [P["W"], P["T"]], 0.55), ("Outer", [P["W"], P["P1"]], 0.35), ("Outer", [P["T"], P["n1"], P["P1"]], 0.3),
+    ]
+    halo_s = "\n".join('\t\t{ "%s", %.2f, { %s } },' % (pc, w, ", ".join(vec(p) for p in line)) for pc, line, w in halo)
+    cloud = [("Outer", P["T"]), ("Outer", P["n1"]), ("Outer", P["P1"]), ("Inner", P["n2"]), ("Inner", P["P2"]),
+             ("Inner", P["n3"]), ("Inner", P["P3"]), ("Inner", P["B"])]
     cloud_s = "\n".join('\t\t{ "%s", %s },' % (pc, vec(p)) for pc, p in cloud)
+    drips = [("Outer", P["T"]), ("Outer", P["P1"]), ("Inner", P["P2"]), ("Inner", P["P3"])]
+    drip_s = "\n".join('\t\t{ "%s", %s },' % (pc, vec(p)) for pc, p in drips)
 
-    src = f'''-- DragonModel v1.0  (ModuleScript in ReplicatedStorage) -- GENERATED, don't edit by hand:
--- change tools/dragon/geometry.py and run tools/dragon/build.py (preview.py / scene.py render it).
+    src = f'''-- DragonModel v2.0  (ModuleScript in ReplicatedStorage) -- GENERATED, don't edit by hand:
+-- change tools/dragon/geometry.py and run tools/dragon/build.py (scene.py / verify.py render it).
 -- The Rising Dragon's meshes (SpinjitzuDragon builds them with EditableMesh on each client) and
 -- where everything goes. Studs at DragonScale 1.
 --   meshes: c = the mesh's centre in its piece's space, v = vertices (thousandths of a stud,
 --   relative to c), t = triangles (3 vertex indices from 0 + 3 corner shades 0..20)
 --   Head space: origin at the neck joint, -Z = snout, +Y = up (shown at HeadScale).
---   Wing space (right wing; the left is the mirror): origin at the shoulder hinge, +X = out,
---   +Y = up, the wing in the X-Y plane. The outer part folds about the W -> F4 bone.
---   Neck collar space: -Z toward the head, +Y away from the body.
+--   Chest: root space (+Z = behind you).
+--   Wing space (right wing): origin at the shoulder hinge, +X = out, +Y = up, flat in X-Y and
+--   symmetric front/back, so the left wing is the same mesh turned round. Laid out spread (flying);
+--   hovering it's raised (WingRaise) and the hand (W, T, n1, P1) turns down about the wrist (HandFold).
+--   Neck plate space: -Z toward the head, +Y away from the body.
 -- {total} triangles.
 
 return {{
@@ -105,13 +106,16 @@ return {{
 	HeadPosFly = {vec(G.HEAD_POS_FLY)},
 	HeadPitchHover = {G.HEAD_PITCH_HOVER}, -- snout raised (radians)
 	HeadPitchFly = {G.HEAD_PITCH_FLY},
-	HeadBack = {vec(G.V(0, 0.05, 0.55))}, -- where the neck meets the head (head space)
+	HeadBack = {vec(G.V(0, 0.05, 0.6))}, -- where the neck meets the head (head space)
 	JawHinge = {vec(G.JAW_HINGE)},
-	NeckBase = {vec(G.NECK_BASE)}, -- where the neck leaves the back (root space)
+	NeckBase = {vec(G.NECK_BASE)}, -- where the neck leaves the chest (root space)
 	NeckCount = {G.NECK_N},
 	Hinge = {vec(G.HINGE)}, -- right wing's shoulder hinge (root space)
 	HingeYaw = {G.HINGE_YAW}, -- wings swept back
-	FlyDihedral = {G.FLY_DIHEDRAL}, -- wings raised into a V when flying
+	WingRaiseHover = {G.WING_RAISE_HOVER}, -- whole wing raised (radians)
+	WingRaiseFly = {G.WING_RAISE_FLY},
+	HandFoldHover = {G.HAND_FOLD_HOVER}, -- hand turned about the wrist (negative = down)
+	HandFoldFly = {G.HAND_FOLD_FLY},
 	Wing = {{
 {pts}
 	}},
@@ -122,6 +126,10 @@ return {{
 	-- where the elemental cloud pours off: piece, point
 	WingCloud = {{
 {cloud_s}
+	}},
+	-- energy dripping off the trailing edge: piece, point
+	WingDrips = {{
+{drip_s}
 	}},
 }}
 '''

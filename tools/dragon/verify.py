@@ -55,34 +55,38 @@ def smoothstep(e0, e1, x):
     t = min(max((x - e0) / (e1 - e0), 0), 1); return t * t * (3 - 2 * t)
 
 def place(rootCF, flap, fold, fb, effort, beat, t, sc=1.0, ws=1.0):
-    items = []  # (mesh, cf, kind)
+    """same steps as SpinjitzuDragon:_placeMeshDragon"""
+    items = []
     hs = sc * num("HeadScale")
-    def put(name, k, pieceCF, kind, mirror=False):
-        m, c = mesh(name, mirror)
+    def put(name, k, pieceCF, kind):
+        m, c = mesh(name)
         items.append((scaled(m, k), mul(rootCF, pieceCF, T(c * k)), kind))
-    Hinge, yaw, dih = vec("Hinge"), num("HingeYaw"), num("FlyDihedral")
+    put("ChestFace", sc, T([0, 0, 0]), "face"); put("ChestHot", sc, T([0, 0, 0]), "hot")
+    Hinge, yaw = vec("Hinge"), num("HingeYaw")
+    raise_ = lerp(num("WingRaiseHover"), num("WingRaiseFly"), fb) + flap
+    hand = min(0, lerp(num("HandFoldHover"), num("HandFoldFly"), fb) - fold)
     for side in (1, -1):
-        at = lambda v: np.array([v[0] * side, v[1], v[2]]) * ws
-        W, F4 = at(wingpt("W")), at(wingpt("F4"))
-        hinge = mul(T([side * Hinge[0] * sc, Hinge[1] * sc, Hinge[2] * sc]), angles(0, -side * yaw, 0), angles(0, 0, side * (flap + dih * fb)))
-        put("InnerMembrane", ws, hinge, "membrane", side < 0); put("InnerHot", ws, hinge, "hot", side < 0)
-        elbow = mul(hinge, T(W), axis_angle(F4 - W, fold * side), T(-W))
-        put("OuterMembrane", ws, elbow, "membrane", side < 0); put("OuterHot", ws, elbow, "hot", side < 0)
+        Wp = wingpt("W"); W = np.array([Wp[0] * side, Wp[1], 0]) * ws
+        hinge = mul(T([side * Hinge[0] * sc, Hinge[1] * sc, Hinge[2] * sc]), angles(0, -side * yaw, 0), angles(0, 0, side * raise_))
+        wrist = mul(hinge, T(W), angles(0, 0, side * hand), T(-W))
+        flip = angles(0, math.pi, 0) if side < 0 else T([0, 0, 0])
+        put("InnerMembrane", ws, mul(hinge, flip), "membrane"); put("InnerHot", ws, mul(hinge, flip), "hot")
+        put("OuterMembrane", ws, mul(wrist, flip), "membrane"); put("OuterHot", ws, mul(wrist, flip), "hot")
     pitch = lerp(num("HeadPitchHover"), num("HeadPitchFly"), fb) + math.sin(t * 2) * 0.04 + beat * 0.03 * effort
     headLocal = mul(T(lerp(vec("HeadPosHover"), vec("HeadPosFly"), fb) * sc), angles(pitch, math.sin(t * 0.7) * 0.06, 0))
     put("HeadFace", hs, headLocal, "face"); put("HeadHot", hs, headLocal, "hot")
     roar = smoothstep(0.1, 0.45, t) * (1 - smoothstep(0.9, 1.6, t))
-    jaw = lerp(0.2, 0.1, fb) + 0.45 * roar + math.sin(t * 3) * 0.03
+    jaw = lerp(0.22, 0.14, fb) + 0.4 * roar + math.sin(t * 3) * 0.03
     hj = vec("JawHinge") * hs
     jl = mul(headLocal, T(hj), angles(-jaw, 0, 0), T(-hj))
     put("JawFace", hs, jl, "face"); put("JawHot", hs, jl, "hot")
     p0 = vec("NeckBase") * sc
     p2 = headLocal[0] @ (vec("HeadBack") * hs) + headLocal[1]
-    p1 = np.array([0, (p0[1] + p2[1]) / 2, max(p0[2], p2[2]) + 0.7 * sc])
+    p1 = np.array([0, (p0[1] + p2[1]) / 2, max(p0[2], p2[2]) + 0.6 * sc])
     n = int(num("NeckCount"))
     for i in range(1, n + 1):
         f = (i - 0.5) / n
-        k = (1.12 - 0.22 * f) * sc
+        k = (1.1 - 0.2 * f) * sc
         pos = p0 * (1 - f) ** 2 + p1 * 2 * (1 - f) * f + p2 * f * f
         tan = (p1 - p0) * 2 * (1 - f) + (p2 - p1) * 2 * f; tan /= np.linalg.norm(tan)
         up = np.cross([1.0, 0, 0], tan); up /= np.linalg.norm(up)
@@ -98,14 +102,14 @@ if __name__ == "__main__":
         sc = Scene()
         sc.mesh(character(), root, (60, 170, 70), (0, 0, 0))
         for m, cf, kind in items:
-            col = {"face": (28, 140, 22), "hot": (215, 255, 180), "membrane": (70, 235, 50)}[kind]
+            col = {"face": (40, 185, 30), "hot": (225, 255, 190), "membrane": (70, 235, 50)}[kind]
             sc.mesh(m, cf, col, col, alpha=0.7 if kind == "membrane" else 1.0, glow=1.0 if kind == "hot" else 0.0)
         return [sc.render(v, span=19, center=center) for v in views]
     hover = (np.eye(3), np.zeros(3))
-    a = render_all(place(hover, 0.15, 0.05, 0, 0.3, 0.3, 3.0), hover,
-                   [rot(math.pi * 0.72, -0.2), rot(0.15, -0.3), rot(-math.pi / 2, -0.05)], (0, 2.5, 0))
+    a = render_all(place(hover, 0.0, 0.0, 0, 0.3, 0.0, 3.0), hover,
+                   [rot(math.pi, -0.25), rot(0.2, -0.3), rot(-math.pi / 2, -0.05)], (0, 2.8, 0))
     fly = (Rx(-math.radians(75)), np.zeros(3))
-    b = render_all(place(fly, 0.1, 0.1, 1, 1, 0.5, 3.0), fly,
-                   [rot(-math.pi / 2, -0.1), rot(0.25, -0.35), rot(math.pi * 0.8, 0.25)], (0, 1, -2.5))
+    b = render_all(place(fly, 0.0, 0.0, 1, 1, 0.0, 3.0), fly,
+                   [rot(-math.pi / 2 - 0.5, -0.3), rot(math.pi * 0.85, -0.6), rot(0.2, -0.45)], (0, 1, -3))
     Image.fromarray(np.concatenate([np.concatenate(a, 1), np.concatenate(b, 1)], 0)).save(os.path.join(out, "verify.png"))
     print("ok")
