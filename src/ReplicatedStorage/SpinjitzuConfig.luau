@@ -1,4 +1,4 @@
--- SpinjitzuConfig v15.6  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuConfig v15.7  (ModuleScript in ReplicatedStorage)
 
 local Config = {}
 
@@ -17,6 +17,7 @@ Config.Presets = {
 		Sounds = { Start = "78556963713691", Loop = "89882806971818", End = "99341603228804" },
 		Sparks = "sparkle",
 		DragonPlate = Color3.fromRGB(30, 150, 25), DragonWing = Color3.fromRGB(110, 210, 20), -- green + lime (Neon brightens them)
+		DragonTeeth = Color3.fromRGB(95, 235, 80), DragonEye = Color3.fromRGB(95, 235, 80), -- a lighter green
 		DragonFlame = ColorSequence.new({
 			ColorSequenceKeypoint.new(0, Color3.fromRGB(245, 255, 130)),
 			ColorSequenceKeypoint.new(0.45, Color3.fromRGB(90, 255, 90)),

@@ -163,10 +163,11 @@ BODY_FRONT = 0.62   # the body's front (against your back), root space z
 BODY_RINGS = [  # y, half width, depth (front to back)   from the neck top down to the tail
     (4.35, 1.1, 1.05), (3.55, 1.05, 1.0), (2.75, 1.15, 1.05),
     (1.95, 1.4, 1.25), (1.15, 1.5, 1.3), (0.35, 1.45, 1.3), (-0.45, 1.3, 1.2), (-1.25, 1.1, 1.05),
-    (-2.05, 0.9, 0.9), (-2.85, 0.7, 0.75), (-3.65, 0.52, 0.6), (-4.4, 0.38, 0.48),
+    (-2.05, 0.9, 0.9), (-2.85, 0.74, 0.77), (-3.65, 0.62, 0.66), (-4.45, 0.52, 0.57), (-5.25, 0.44, 0.5),
+    (-6.05, 0.37, 0.44), (-6.85, 0.31, 0.38), (-7.65, 0.25, 0.32), (-8.4, 0.2, 0.27),
 ]
 BODY_V = 0.45       # the plate seams on the back dip into V's this deep
-TAIL_TIP = V(0, -6.0, BODY_FRONT + 0.25)
+TAIL_TIP = V(0, -10.0, BODY_FRONT + 0.2)
 NECK_TOP = V(0, 5.28, BODY_FRONT + 0.6)  # where the head sits (head space origin goes here)
 
 
@@ -245,6 +246,8 @@ def _arc(a, b, bow, n=5):
 WP = {
     "S": V(0, 0, 0), "E": V(0.75, 0.4, 0), "N": V(1.25, -0.2, 0), "K": V(1.85, 0.45, 0), "W": V(8.4, 1.35, 0),
     "Wx": V(9.1, 1.8, 0), "Tb": V(8.0, -3.3, 0), "P1": V(5.6, -3.1, 0), "P": V(3.2, -2.8, 0), "B": V(0.25, -1.7, 0),
+    # the root carries on into the body, so there's no gap between the wing and the body
+    "R1": V(-0.95, -1.7, 0), "R0": V(-0.95, 0.15, 0),
 }
 SCALLOP0 = _arc(WP["Tb"], WP["P1"], 0.95)
 SCALLOP1 = _arc(WP["P1"], WP["P"], 0.95)
@@ -275,21 +278,21 @@ def ear_clip(poly):
     tris.append(tuple(pts))
     return tris
 WING_OUTLINE = ["S", "E", "N", "K", "W", "Tb"]  # then the two scallops back to the body
-HINGE = V(1.85, 1.7, BODY_FRONT + 0.85)   # right wing's hinge, root space (on the body's side)
+HINGE = V(1.45, 1.7, BODY_FRONT + 0.85)   # right wing's hinge, root space (on the body's side)
 HINGE_YAW = 0.12
 WING_RAISE = 0.22                         # wings tilted up toward the tips
 
 
 def build_wing():
     p = Piece()
-    outline = ([WP[k] for k in WING_OUTLINE] + SCALLOP0 + [WP["P1"]] + SCALLOP1 + [WP["P"]] + SCALLOP2 + [WP["B"]])
+    outline = ([WP[k] for k in WING_OUTLINE] + SCALLOP0 + [WP["P1"]] + SCALLOP1 + [WP["P"]] + SCALLOP2 + [WP["B"], WP["R1"], WP["R0"]])
     for a, b, c in ear_clip(outline):
         p.tri(a, b, c)
     # bones: leading edge, outer edge, and one down to each point between the sections
     for a, b, th in [("S", "E", 0.12), ("E", "N", 0.1), ("N", "K", 0.1), ("K", "W", 0.14), ("W", "Tb", 0.09),
                      ("N", "P", 0.07), ("K", "P1", 0.07), ("B", "S", 0.07), ("W", "Wx", 0.08)]:
         p.edge(WP[a], WP[b], th)
-    for chain in ([WP["Tb"]] + SCALLOP0 + [WP["P1"]], [WP["P1"]] + SCALLOP1 + [WP["P"]], [WP["P"]] + SCALLOP2 + [WP["B"]]):
+    for chain in ([WP["Tb"]] + SCALLOP0 + [WP["P1"]], [WP["P1"]] + SCALLOP1 + [WP["P"]], [WP["P"]] + SCALLOP2 + [WP["B"], WP["R1"], WP["R0"]]):
         for a, b in zip(chain[:-1], chain[1:]):
             p.edge(a, b, 0.06)
     return p
@@ -331,7 +334,7 @@ HEAD_PITCH = math.pi / 2   # snout straight up the column
 def mouth():
     """the middle of the open mouth in root space (head at rest)"""
     R = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]]) * HEAD_SCALE   # Angles(pi/2, 0, 0)
-    return R @ V(0, -0.65, -3.0) + NECK_TOP
+    return R @ V(0, -0.6, -1.7) + NECK_TOP   # back in the throat
 
 
 def placed(flap=0.0):

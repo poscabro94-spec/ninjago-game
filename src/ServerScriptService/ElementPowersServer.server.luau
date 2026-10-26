@@ -1,4 +1,4 @@
--- ElementPowersServer v2.3  (Script in ServerScriptService)
+-- ElementPowersServer v2.4  (Script in ServerScriptService)
 -- The elemental powers (settings in ElementPowers): Lightning, Fire, Ice, Earth.
 -- The client (ElementPowersClient) sends:
 --   "ball", aim         tap left click: next shot of the combo
@@ -841,7 +841,8 @@ end)
 
 remote.OnServerEvent:Connect(function(player, action, value)
 	if action == "ball" then
-		if validAim(value) then throw(player, playerCheck(player), value) end
+		-- on the Rising Dragon it's the beam (hold) only
+		if validAim(value) and not Powers.DragonMouth(player.Character) then throw(player, playerCheck(player), value) end
 	elseif action == "beam" then
 		if value == false then stopBeam(player) else startBeam(player, playerCheck(player), value) end
 	elseif action == "aim" then

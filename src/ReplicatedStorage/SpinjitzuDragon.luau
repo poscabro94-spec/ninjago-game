@@ -1,4 +1,4 @@
--- SpinjitzuDragon v17.0  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuDragon v17.1  (ModuleScript in ReplicatedStorage)
 -- Elemental dragon that appears behind the character after Spinjitzu (Rising Dragon), built from
 -- plain parts like the show's energy dragons: solid-looking panels in the element colour with thin
 -- glowing outlines. One tall column behind you: a cap-shaped faceted head on top (V seams down
@@ -82,19 +82,19 @@ end
 -- character poses while the dragon is out (same joint space as SpinjitzuEffect)
 local POSE_JOINTS = { RightShoulder = true, LeftShoulder = true, RightHip = true, LeftHip = true, Waist = true }
 local JOINT_ALIAS = { RootJoint = "Root" }
--- superhero: right fist punched straight up, left arm down by your side, legs together. Flying
--- (you're lying along the dragon) that's the fist out in front, Superman-style.
+-- superhero hover (Iron Man style): both arms down, held out from your sides and back a little,
+-- chest out, feet apart. Flying, the arms sweep back along your sides, legs together.
 local HOVER_POSE = {
-	RightShoulder = CFrame.Angles(0.15, 0, 2.95),
-	LeftShoulder  = CFrame.Angles(-0.05, 0, -0.12),
-	RightHip      = CFrame.Angles(0, 0, 0.02),
-	LeftHip       = CFrame.Angles(0.15, 0, -0.02),    -- one knee a touch forward
+	RightShoulder = CFrame.Angles(-0.3, 0, 0.5),
+	LeftShoulder  = CFrame.Angles(-0.3, 0, -0.5),
+	RightHip      = CFrame.Angles(0, 0, 0.12),
+	LeftHip       = CFrame.Angles(0, 0, -0.12),
 }
 local FLY_POSE = {
-	RightShoulder = CFrame.Angles(0.05, 0, 3.0),
-	LeftShoulder  = CFrame.Angles(-0.25, 0, -0.08),   -- along your side
-	RightHip      = CFrame.Angles(-0.1, 0, 0.02),
-	LeftHip       = CFrame.Angles(-0.1, 0, -0.02),
+	RightShoulder = CFrame.Angles(-0.45, 0, 0.28),
+	LeftShoulder  = CFrame.Angles(-0.45, 0, -0.28),
+	RightHip      = CFrame.Angles(-0.12, 0, 0.03),
+	LeftHip       = CFrame.Angles(-0.12, 0, -0.03),
 }
 
 local function getFxFolder()
@@ -129,6 +129,7 @@ function Dragon.new(character, color, highlight, elementName)
 	self.plateCol = preset.DragonPlate or Color3.fromHSV(h, math.max(s, 0.8), 0.75)
 	self.wingCol = preset.DragonWing or Color3.fromHSV(h, math.max(s, 0.8) * 0.75, 1)
 	self.toothCol = preset.DragonTeeth or self.plateCol
+	self.eyeCol = preset.DragonEye or WHITE:Lerp(self.glowCol, 0.15)
 	self.boneCol = preset.DragonBone or self.plateCol
 	self.edgeCol = preset.DragonEdge or self.wingCol:Lerp(WHITE, 0.3)
 	self.coreCol = WHITE:Lerp(self.glowCol, 0.15)
@@ -209,7 +210,7 @@ function Dragon:_mist(parent, size)
 		Texture = TEX_SMOKE, Color = ColorSequence.new(self.glowCol, self.edgeCol), LightEmission = 0.8, Brightness = 2,
 		Size = NumberSequence.new({ kp(0, 0.7 * size), kp(1, 1.8 * size) }),
 		Transparency = NumberSequence.new({ kp(0, 1), kp(0.25, 0.5), kp(1, 1) }),
-		Lifetime = NumberRange.new(0.8, 1.4), Rate = 6, Speed = NumberRange.new(0.5, 2),
+		Lifetime = NumberRange.new(0.8, 1.4), Rate = 9, Speed = NumberRange.new(0.5, 2),
 		SpreadAngle = Vector2.new(180, 180), Acceleration = Vector3.new(0, 2, 0), Drag = 1,
 		Rotation = NumberRange.new(0, 360), RotSpeed = NumberRange.new(-40, 40),
 	})
@@ -232,13 +233,128 @@ function Dragon:_trail(att, width, life)
 	return tr, a0, a1
 end
 
+-- an invisible box on a piece (particles come out of all over it)
+function Dragon:_volume(root, cf, size)
+	local p = newPart("Part", self.folder, { Name = "FxVolume", Size = size })
+	p.CFrame = root.CFrame * cf
+	p.Anchored, p.Massless = false, true
+	local w = Instance.new("WeldConstraint")
+	w.Part0, w.Part1 = root, p
+	w.Parent = p
+	return p
+end
+
+local function beamLine(a0, a1, width, color, parent)
+	return make("Beam", {
+		Attachment0 = a0, Attachment1 = a1, FaceCamera = true, Segments = 1,
+		LightEmission = 1, LightInfluence = 0, Brightness = 4,
+		Width0 = width, Width1 = width, Color = ColorSequence.new(color),
+		Transparency = NumberSequence.new(1),
+	}, parent)
+end
+
+-- crackling arcs of energy jumping round the dragon: each one a zigzag of beams that flashes for a
+-- moment somewhere new
+local ARC_POINTS = 5
+function Dragon:_buildArcs()
+	self.arcs, self.arcClock = {}, 0
+	for i = 1, 6 do
+		local pts, beams = {}, {}
+		for k = 1, ARC_POINTS do
+			pts[k] = Instance.new("Attachment")
+			pts[k].Parent = self.anchor
+		end
+		for k = 1, ARC_POINTS - 1 do
+			beams[k] = beamLine(pts[k], pts[k + 1], 0.09 * self.sc, k % 2 == 0 and WHITE or self.edgeCol, self.anchor)
+		end
+		self.arcs[i] = { pts = pts, beams = beams, life = 0 }
+	end
+end
+
+local function rnd(a, b) return a + math.random() * (b - a) end
+
+function Dragon:_updateArcs(dt, a, effort)
+	local sc = self.sc
+	self.arcClock -= dt
+	if self.arcClock <= 0 and not self.stopping then
+		self.arcClock = rnd(0.04, 0.12) / (0.5 + effort)
+		local arc
+		for _, c in ipairs(self.arcs) do
+			if c.life <= 0 then arc = c break end
+		end
+		if arc then
+			-- somewhere on the body or out along a wing, jumping 2-4.5 studs
+			local side = math.random() < 0.5 and 1 or -1
+			local p0 = math.random() < 0.5 and Vector3.new(rnd(-1.5, 1.5), rnd(-4, 5), rnd(0.5, 2.5))
+				or Vector3.new(side * rnd(2, 9.5), rnd(-1.5, 3.5), rnd(0.8, 2.2))
+			local dir = Vector3.new(rnd(-1, 1), rnd(-1, 1), rnd(-0.4, 0.4))
+			dir = dir.Magnitude > 0.05 and dir.Unit or Vector3.yAxis
+			local p1 = p0 + dir * rnd(2, 4.5)
+			local side2 = dir:Cross(Vector3.zAxis)
+			side2 = side2.Magnitude > 0.05 and side2.Unit or Vector3.xAxis
+			for k, att in ipairs(arc.pts) do
+				local u = (k - 1) / (ARC_POINTS - 1)
+				local kink = (k == 1 or k == ARC_POINTS) and 0 or rnd(-0.6, 0.6)
+				att.Position = (p0:Lerp(p1, u) + side2 * kink) * sc
+			end
+			arc.life = rnd(0.06, 0.14)
+			arc.shown = nil
+		end
+	end
+	for _, arc in ipairs(self.arcs) do
+		local show = arc.life > 0 and a or 0
+		arc.life -= dt
+		if show ~= arc.shown then
+			arc.shown = show
+			for _, b in ipairs(arc.beams) do b.Transparency = NumberSequence.new(1 - 0.95 * show) end
+		end
+	end
+end
+
+-- rings of energy rippling out from the dragon and falling away below it (behind it when flying)
+local RING_SIDES, RING_COUNT, RING_TIME = 14, 3, 0.9
+function Dragon:_buildRings()
+	self.rings = {}
+	for i = 1, RING_COUNT do
+		local pts, beams = {}, {}
+		for k = 1, RING_SIDES do
+			pts[k] = Instance.new("Attachment")
+			pts[k].Parent = self.anchor
+		end
+		for k = 1, RING_SIDES do
+			beams[k] = beamLine(pts[k], pts[k % RING_SIDES + 1], 0.3 * self.sc, self.edgeCol, self.anchor)
+		end
+		self.rings[i] = { pts = pts, beams = beams, offset = (i - 1) / RING_COUNT }
+	end
+end
+
+function Dragon:_updateRings(a, effort)
+	local sc = self.sc
+	for _, r in ipairs(self.rings) do
+		local u = (self.t / RING_TIME + r.offset) % 1
+		local radius = lerp(1.2, 6.5, smoothstep(0, 1, u)) * sc
+		local y = lerp(-1, -7, u) * sc
+		local spin = self.t * 1.5 + r.offset * 6
+		for k, att in ipairs(r.pts) do
+			local ang = spin + (k - 1) / RING_SIDES * math.pi * 2
+			att.Position = Vector3.new(math.cos(ang) * radius, y, 0.9 * sc + math.sin(ang) * radius)
+		end
+		local vis = a * lerp(0.35, 1, effort) * (1 - u) * math.min(1, u * 6)
+		local width = lerp(0.4, 0.08, u) * sc
+		for _, b in ipairs(r.beams) do
+			b.Transparency = NumberSequence.new(1 - 0.9 * vis)
+			b.Width0, b.Width1 = width, width
+		end
+	end
+end
+
 -- green-flame wisps licking up off it (fire texture in the dragon's two shades)
 function Dragon:_flames(parent, size)
 	self:_emitter(parent, {
 		Texture = TEX_FIRE, Color = ColorSequence.new(self.wingCol, self.plateCol), LightEmission = 1, Brightness = 3,
 		Size = NumberSequence.new({ kp(0, 0.9 * size), kp(0.5, 1.3 * size), kp(1, 0.3 * size) }),
 		Transparency = NumberSequence.new({ kp(0, 0.6), kp(0.2, 0.15), kp(1, 1) }),
-		Lifetime = NumberRange.new(0.5, 1.0), Rate = 16, Speed = NumberRange.new(1, 3),
+		Lifetime = NumberRange.new(0.5, 1.0), Rate = 22, Speed = NumberRange.new(1, 3),
 		SpreadAngle = Vector2.new(180, 180), Acceleration = Vector3.new(0, 8, 0), Drag = 1,
 		Rotation = NumberRange.new(0, 360), RotSpeed = NumberRange.new(-120, 120),
 	})
@@ -283,7 +399,7 @@ function Dragon:_facets(root, data, scale, color, bones)
 	-- white light: blocks, oval eyes (a sphere mesh stretched), and flat triangles (inside the mouth)
 	for _, g in ipairs(data.glow or {}) do
 		local tilt = g[3]
-		local p = self:_add(root, "Part", CFrame.new(g[1] * scale) * CFrame.Angles(tilt.X, tilt.Y, tilt.Z), g[2] * scale, self.coreCol, g[4])
+		local p = self:_add(root, "Part", CFrame.new(g[1] * scale) * CFrame.Angles(tilt.X, tilt.Y, tilt.Z), g[2] * scale, g[5] == "oval" and self.eyeCol or self.coreCol, g[4])
 		if g[5] == "oval" then
 			local mesh = Instance.new("SpecialMesh")
 			mesh.MeshType = Enum.MeshType.Sphere
@@ -335,6 +451,33 @@ function Dragon:_buildBody()
 	glow.Position = Vector3.new(0, -0.65, -1.6) * self.hs
 	glow.Parent = self.head
 	self.headLight = make("PointLight", { Color = self.coreCol, Brightness = 1.5, Range = 10 * sc, Shadows = false }, glow)
+	-- energy boiling in the throat: a pulsing ball of light + sparks spilling out of the mouth
+	self.throat = self:_emitter(glow, {
+		Texture = TEX_SPARK, Color = ColorSequence.new(WHITE, self.wingCol), LightEmission = 1, Brightness = 5,
+		Size = NumberSequence.new({ kp(0, 1.4 * self.hs), kp(0.5, 1.9 * self.hs), kp(1, 0.6 * self.hs) }),
+		Transparency = NumberSequence.new({ kp(0, 0.5), kp(0.5, 0.2), kp(1, 1) }),
+		Lifetime = NumberRange.new(0.25, 0.4), Rate = 14, Speed = NumberRange.new(0), LockedToPart = true,
+		Rotation = NumberRange.new(0, 360), RotSpeed = NumberRange.new(-300, 300),
+	})
+	self:_emitter(glow, {
+		Texture = TEX_SPARK, Color = ColorSequence.new(self.edgeCol, self.wingCol), LightEmission = 1, Brightness = 4,
+		Size = NumberSequence.new({ kp(0, 0.25 * self.hs), kp(1, 0) }),
+		Lifetime = NumberRange.new(0.3, 0.6), Rate = 30, Speed = NumberRange.new(2 * sc, 6 * sc),
+		EmissionDirection = Enum.NormalId.Front, SpreadAngle = Vector2.new(40, 40), Drag = 2,
+	})
+	self:_flames(glow, 0.8 * self.hs)
+	-- the eyes leave streaks of light behind them
+	for _, sx in ipairs({ 1, -1 }) do
+		local eye = Instance.new("Attachment")
+		eye.Position = Vector3.new(sx * 1.25, 0.5, -1.38) * self.hs
+		eye.Parent = self.head
+		self:_trail(eye, 0.22 * self.hs, 0.35)
+		self:_emitter(eye, {
+			Texture = TEX_SPARK, Color = ColorSequence.new(self.eyeCol), LightEmission = 1, Brightness = 4,
+			Size = NumberSequence.new({ kp(0, 0.5 * self.hs), kp(1, 0) }), Lifetime = NumberRange.new(0.15, 0.3),
+			Rate = 12, Speed = NumberRange.new(0), LockedToPart = true,
+		})
+	end
 	-- wings (the same part both sides; the left one is turned round when it's placed)
 	self.wings, self.drips = {}, {}
 	for _, side in ipairs({ 1, -1 }) do
@@ -366,8 +509,24 @@ function Dragon:_buildBody()
 			}, top)
 			table.insert(self.drips, { top = top, bottom = bottom, beam = beam, len = (3.5 + math.random() * 2) * sc, phase = math.random() * 6 })
 		end
+		-- sparkles all over the membrane
+		self:_emitter(self:_volume(wing, CFrame.new(4.2 * ws, -0.8 * ws, 0), Vector3.new(8.5, 4.2, 0.2) * ws), {
+			Texture = TEX_SPARK, Color = ColorSequence.new(self.edgeCol, self.wingCol), LightEmission = 1, Brightness = 4,
+			Size = NumberSequence.new({ kp(0, 0), kp(0.3, 0.3 * ws), kp(1, 0) }),
+			Lifetime = NumberRange.new(0.4, 0.9), Rate = 40, Speed = NumberRange.new(0.2, 1.5),
+			SpreadAngle = Vector2.new(180, 180), Rotation = NumberRange.new(0, 360),
+		})
 		self.wings[side] = wing
 	end
+	-- and over the body + neck
+	self:_emitter(self:_volume(self.body, CFrame.new(0, 1.5 * sc, 1.5 * sc), Vector3.new(3, 7, 2) * sc), {
+		Texture = TEX_SPARK, Color = ColorSequence.new(self.edgeCol, self.plateCol), LightEmission = 1, Brightness = 4,
+		Size = NumberSequence.new({ kp(0, 0), kp(0.3, 0.35 * sc), kp(1, 0) }),
+		Lifetime = NumberRange.new(0.4, 0.9), Rate = 35, Speed = NumberRange.new(0.5, 2),
+		SpreadAngle = Vector2.new(180, 180), Rotation = NumberRange.new(0, 360),
+	})
+	self:_buildArcs()
+	self:_buildRings()
 
 	-- streaks of energy flying off in every direction
 	local mid = Instance.new("Attachment")
@@ -379,7 +538,7 @@ function Dragon:_buildBody()
 		Size = NumberSequence.new({ kp(0, 0.22 * sc), kp(1, 0.08 * sc) }),
 		Squash = NumberSequence.new(2.5),
 		Transparency = NumberSequence.new({ kp(0, 0.1), kp(0.7, 0.3), kp(1, 1) }),
-		Lifetime = NumberRange.new(0.3, 0.55), Rate = 30, Speed = NumberRange.new(22 * sc, 40 * sc),
+		Lifetime = NumberRange.new(0.3, 0.55), Rate = 55, Speed = NumberRange.new(22 * sc, 40 * sc),
 		SpreadAngle = Vector2.new(180, 180), Drag = 2,
 	})
 	-- wisps of energy spiralling round the dragon, leaving trails
@@ -403,7 +562,7 @@ function Dragon:_buildBody()
 		Texture = TEX_SPARK, Color = ColorSequence.new(self.edgeCol, self.wingCol), LightEmission = 1, Brightness = 3,
 		Size = NumberSequence.new({ kp(0, 0.25 * sc), kp(0.5, 0.35 * sc), kp(1, 0) }),
 		Transparency = NumberSequence.new({ kp(0, 0.2), kp(1, 1) }),
-		Lifetime = NumberRange.new(1, 2), Rate = 25, Speed = NumberRange.new(2 * sc, 6 * sc),
+		Lifetime = NumberRange.new(1, 2), Rate = 45, Speed = NumberRange.new(2 * sc, 6 * sc),
 		SpreadAngle = Vector2.new(180, 180), Acceleration = Vector3.new(0, 3, 0), Drag = 1.5,
 	})
 	-- mist along the body
@@ -424,7 +583,7 @@ function Dragon:_buildBody()
 		Size = NumberSequence.new({ kp(0, 0.3 * sc), kp(1, 0.1 * sc) }),
 		Squash = NumberSequence.new(3),
 		Transparency = NumberSequence.new({ kp(0, 0.1), kp(0.7, 0.4), kp(1, 1) }),
-		Lifetime = NumberRange.new(0.5, 0.8), Rate = 45, Speed = NumberRange.new(16 * sc, 28 * sc),
+		Lifetime = NumberRange.new(0.5, 0.8), Rate = 70, Speed = NumberRange.new(16 * sc, 28 * sc),
 		EmissionDirection = Enum.NormalId.Bottom, SpreadAngle = Vector2.new(35, 35), Drag = 1,
 	})
 	-- rising: a bright column of energy below you
@@ -655,6 +814,11 @@ function Dragon:Update(dt)
 		end
 	end
 
+	self:_updateArcs(dt, a, effort)
+	self:_updateRings(a, effort)
+	if self.throat then
+		self.throat.Rate = 14 + 10 * math.sin(t * 9)
+	end
 	if self.light then
 		self.light.Brightness = 2 * a * (0.85 + 0.15 * math.sin(t * 7))
 	end

@@ -1,4 +1,4 @@
--- ElementPowersClient v3.2  (LocalScript in StarterPlayerScripts)
+-- ElementPowersClient v3.3  (LocalScript in StarterPlayerScripts)
 -- Your elemental power button (empty hands, any element): tap left click = the shot combo, hold
 -- left click = beam. In a beam clash: mash F (bar at the bottom shows who's winning).
 -- Turns you toward where you aim. Draws the effects for
@@ -98,7 +98,7 @@ UserInputService.InputEnded:Connect(function(input)
 	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
 	if beaming then
 		stopBeam()
-	elseif pressedAt and canUse() then
+	elseif pressedAt and canUse() and not Powers.DragonMouth(player.Character) then -- (on the dragon: hold only)
 		face(mouse.Hit.Position)
 		remote:FireServer("ball", mouse.Hit.Position)
 	end
