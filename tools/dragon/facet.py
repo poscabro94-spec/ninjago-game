@@ -82,6 +82,16 @@ def _jaw_turn():
     return lambda v: JAW_HINGE + R @ (v - JAW_HINGE)
 
 
+def plate(p, c, size, tilt, th=0.045):
+    """a raised block (centre, size, tilt as CFrame.Angles), filled + all 12 edges outlined"""
+    import rock
+    P = rock.corners({"c": c, "s": size, "r": tilt})
+    for i, j, k, l in [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)]:
+        p.tri(P[i], P[j], P[k]); p.tri(P[i], P[k], P[l])
+    for i, j in [(0, 1), (2, 3), (4, 5), (6, 7), (0, 2), (1, 3), (4, 6), (5, 7), (0, 4), (1, 5), (2, 6), (3, 7)]:
+        p.edge(P[i], P[j], th)
+
+
 def build_head():
     p = Piece()
     loft_piece(p, [head_ring(*r) for r in SKULL], SKULL_TIP, back=V(0, 0.1, 0.55))
@@ -89,17 +99,23 @@ def build_head():
     turn = _jaw_turn()
     jaw = [[turn(q) for q in head_ring(z, w, top, bot, chevron=0.0)] for z, w, top, bot in JAW]
     loft_piece(p, jaw, turn(JAW_TIP), back=turn(V(0, -0.7, 0.45)))
-    # brow plates over the eyes and stubby horns at the back corners
+    # stubby horns at the back corners
     for sx in (1, -1):
-        a, b, tip = V(sx * 1.15, 0.85, -0.8), V(sx * 1.1, 0.75, -2.0), V(sx * 1.6, 1.05, -0.95)
-        p.tri(a, b, tip); p.edge(a, tip, 0.05); p.edge(b, tip, 0.05); p.edge(a, b, 0.05)
         a, b, tip = V(sx * 1.1, 0.7, 0.35), V(sx * 1.15, 0.05, 0.3), V(sx * 1.7, 0.6, 1.0)
         p.tri(a, b, tip); p.edge(a, tip, 0.05); p.edge(b, tip, 0.05)
+    # raised plates: brow arches over the eyes (sockets), cheek guards at the back, a crest down
+    # the ridge, a ridge along the nose
+    for sx in (1, -1):
+        plate(p, V(sx * 0.95, 1.0, -1.35), V(0.6, 0.3, 1.55), V(0.12, sx * 0.15, -sx * 0.38))
+        plate(p, V(sx * 1.32, 0.15, -0.15), V(0.45, 0.95, 1.15), V(0, sx * 0.22, -sx * 0.1))
+    for z in (-0.25, -0.95, -1.65):
+        plate(p, V(0, 1.15, z), V(0.12, 0.38, 0.62), V(-0.5, 0, 0))
+    plate(p, V(0, 0.72, -3.0), V(0.5, 0.2, 1.15), V(0.18, 0, 0))
     # white light filling the open mouth (roof + floor), and the eyes
     p.glow.append((V(0, -0.44, -1.7), V(1.3, 0.06, 2.9), V(0, 0, 0), 0))
     jc = turn(V(0, -0.42, -1.6))
     p.glow.append((jc, V(1.0, 0.08, 3.0), V(-JAW_OPEN, 0, 0), 0))
-    p.glow.append((V(0, -0.55, -1.5), V(0.7, 0.35, 2.0), V(-JAW_OPEN / 2, 0, 0), 0.4))   # the glow between
+    p.glow.append((V(0, -0.62, -1.5), V(0.9, 0.45, 2.3), V(-JAW_OPEN / 2, 0, 0), 0.15))  # the glow between
     for sx in (1, -1):
         p.glow.append((V(sx * 1.3, 0.45, -1.35), V(0.1, 0.2, 0.9), V(0, sx * 0.25, sx * 0.2), 0))
     return p
@@ -278,10 +294,10 @@ if __name__ == "__main__":
     sc = Scene()
     m, hot, glow = to_mesh(build_head(), G, tube)
     up = mul(T([0, 0, 0]), ang(HEAD_PITCH, 0, 0))
-    sc.mesh(glow, up, (255, 255, 255), (0, 0, 0), glow=1.0)
+    sc.mesh(glow, up, (255, 255, 255), (0, 0, 0))
     sc.mesh(m, up, (45, 60, 240), (0, 0, 0))
     sc.mesh(hot, up, (150, 165, 255), (150, 165, 255), glow=1.0)
-    close = [sc.render(v, span=6.5, center=(0, 1.8, 0)) for v in (rot(math.pi, -0.1), rot(-math.pi / 2, 0), rot(0, -0.5))]
+    close = [sc.render(v, span=6.5, center=(0, 1.8, 0)) for v in (rot(math.pi, -0.1), rot(-math.pi / 2, 0), rot(0, -0.5), rot(math.pi * 0.75, 0.35))]
     Image.fromarray(np.concatenate(close, 1)).save(os.path.join(out, "head_close.png"))
     # like the references: hovering from the front (a bit above), from the side; flying from behind + above
     a = render(hover, [rot(math.pi, -0.15), rot(-math.pi / 2, -0.05)], (0, 0.8, 0), span=19)

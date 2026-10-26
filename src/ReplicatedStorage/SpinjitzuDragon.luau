@@ -1,4 +1,4 @@
--- SpinjitzuDragon v15.0  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuDragon v15.1  (ModuleScript in ReplicatedStorage)
 -- Elemental dragon that appears behind the character after Spinjitzu (Rising Dragon), built from
 -- plain parts like the show's energy dragons: solid-looking panels in the element colour with thin
 -- glowing outlines. One tall column behind you: a cap-shaped faceted head on top (V seams down
@@ -230,11 +230,11 @@ function Dragon:_buildBody()
 	self.headFx = Instance.new("Attachment")
 	self.headFx.Parent = self.head
 	self.headFx.Position = Vector3.new(0, 0, -2 * self.hs)
-	-- the glow inside the head lights things up
+	-- the light inside the open mouth spills out
 	local glow = Instance.new("Attachment")
-	glow.Position = Vector3.new(0, 0.1, -1.45) * self.hs
+	glow.Position = Vector3.new(0, -0.65, -1.6) * self.hs
 	glow.Parent = self.head
-	self.headLight = make("PointLight", { Color = self.coreCol, Brightness = 1, Range = 10 * sc, Shadows = false }, glow)
+	self.headLight = make("PointLight", { Color = self.coreCol, Brightness = 1.5, Range = 10 * sc, Shadows = false }, glow)
 	-- wings (the same part both sides; the left one is turned round when it's placed)
 	self.wings, self.drips = {}, {}
 	for _, side in ipairs({ 1, -1 }) do
@@ -486,7 +486,7 @@ function Dragon:Update(dt)
 	if self.light then
 		self.light.Brightness = 2 * a * (0.85 + 0.15 * math.sin(t * 7))
 	end
-	if self.headLight then self.headLight.Brightness = a end
+	if self.headLight then self.headLight.Brightness = 1.5 * a end
 	for s in pairs(self.muted) do
 		if s.Volume ~= 0 then s.Volume = 0 end
 	end
