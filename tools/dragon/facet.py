@@ -27,56 +27,65 @@ def mirrored(pts):
 
 
 # ---------------------------------------------------------------------------------------------
-# head (faceted, like a gem; snout = -Z)
+# head: chunky, tiled with rows of plates (each outlined), pointed snout, ridge down the middle,
+# a big white glow inside. Head space: origin at the neck joint, -Z = snout, +Y = up (the game
+# turns it to point up the column).
 # ---------------------------------------------------------------------------------------------
-HP = mirrored({
-    "R0": V(0, 0.95, 0.35), "R1": V(0, 1.15, -0.95), "R2": V(0, 0.8, -2.4), "R3": V(0, 0.4, -3.55),
-    "T": V(0, 0.0, -3.95),
-    "U0": V(1.15, 0.45, 0.4), "U1": V(1.35, 0.55, -0.95), "U2": V(0.9, 0.38, -2.4), "U3": V(0.5, 0.15, -3.45),
-    "D0": V(0.85, -0.6, 0.3), "D1": V(0.9, -0.55, -1.0), "D2": V(0.55, -0.42, -2.6),
-    "B0": V(0, -0.82, 0.3), "B1": V(0, -0.78, -1.0), "B2": V(0, -0.58, -2.6),
-    "H0": V(0.85, 0.75, 0.25), "H1": V(1.05, 1.05, 1.5),   # horn plate base / tip
-})
+HEAD_RINGS = [  # z, half width, top, bottom
+    (0.45, 1.0, 0.85, -0.8),
+    (-0.2, 1.3, 1.1, -0.95),
+    (-0.9, 1.35, 1.15, -0.95),
+    (-1.6, 1.25, 1.05, -0.88),
+    (-2.3, 1.05, 0.88, -0.75),
+    (-3.0, 0.82, 0.7, -0.6),
+    (-3.55, 0.6, 0.52, -0.46),
+]
+HEAD_TIP = V(0, 0.05, -4.05)
+HEAD_BACK = V(0, 0.05, 0.75)
+
+
+def head_ring(z, w, top, bot):
+    right = [(0.55 * w, top), (w, 0.45 * top), (0.95 * w, 0.45 * bot), (0.55 * w, bot)]
+    return ([V(0, top + 0.14, z)] + [V(x, y, z) for x, y in right] + [V(0, bot - 0.06, z)]
+            + [V(-x, y, z) for x, y in reversed(right)])
 
 
 def build_head():
     p = Piece()
-    P = HP
-    faces = []
-    for s in ("", "_"):
-        g = lambda k: P[k + s] if (k + s) in P else P[k]
-        faces += [("R0", "U0", "R1"), ("U0", "U1", "R1"), ("R1", "U1", "R2"), ("U1", "U2", "R2"), ("R2", "U2", "R3"),
-                  ("U2", "U3", "R3"), ("R3", "U3", "T"),
-                  ("U0", "D0", "U1"), ("D0", "D1", "U1"), ("U1", "D1", "U2"), ("D1", "D2", "U2"), ("U2", "D2", "U3"), ("D2", "T", "U3"),
-                  ("D0", "B0", "D1"), ("B0", "B1", "D1"), ("D1", "B1", "D2"), ("B1", "B2", "D2"), ("D2", "B2", "T"),
-                  ("R0", "U0", "D0"), ("R0", "D0", "B0")]
-        faces = [tuple(k + s if (k + s) in P else k for k in f) for f in faces] if s == "_" else faces
-    # (the loop above leaves faces for both sides; rebuild cleanly)
-    base = [("R0", "U0", "R1"), ("U0", "U1", "R1"), ("R1", "U1", "R2"), ("U1", "U2", "R2"), ("R2", "U2", "R3"),
-            ("U2", "U3", "R3"), ("R3", "U3", "T"),
-            ("U0", "D0", "U1"), ("D0", "D1", "U1"), ("U1", "D1", "U2"), ("D1", "D2", "U2"), ("U2", "D2", "U3"), ("D2", "T", "U3"),
-            ("D0", "B0", "D1"), ("B0", "B1", "D1"), ("D1", "B1", "D2"), ("B1", "B2", "D2"), ("D2", "B2", "T"),
-            ("R0", "U0", "D0"), ("R0", "D0", "B0")]
-    faces = []
-    for s in ("", "_"):
-        faces += [tuple(k + s if (k + s) in P else k for k in f) for f in base]
+    rings = [head_ring(*r) for r in HEAD_RINGS]
+    n = len(rings[0])
     seen = set()
-    for f in faces:
-        p.tri(*(P[k] for k in f))
-        for a, b in ((f[0], f[1]), (f[1], f[2]), (f[2], f[0])):
-            key = tuple(sorted((a, b)))
-            if key not in seen:
-                seen.add(key)
-                p.edge(P[a], P[b], 0.07)
-    # horn plates sweeping back
-    for s in ("", "_"):
-        h0, h1, u0 = P["H0" + s], P["H1" + s], P["U0" + s]
-        p.tri(h0, u0, h1)
-        p.edge(h0, h1, 0.06); p.edge(u0, h1, 0.06)
-    # white glow inside + eyes
-    p.glow.append((V(0, 0.15, -1.5), V(0.8, 0.45, 2.2), V(0, 0, 0), 0.3))
+    def edge(a, b, th=0.065):
+        key = tuple(sorted((tuple(np.round(a, 4)), tuple(np.round(b, 4)))))
+        if key not in seen:
+            seen.add(key)
+            p.edge(a, b, th)
+    # tiles between the rings (each quad = 2 triangles), outlined on all four sides
+    for i in range(len(rings) - 1):
+        for k in range(n):
+            k2 = (k + 1) % n
+            a, b, c, d = rings[i][k], rings[i][k2], rings[i + 1][k2], rings[i + 1][k]
+            p.tri(a, b, c); p.tri(a, c, d)
+            edge(a, b); edge(b, c); edge(c, d); edge(d, a)
+    # pointed snout + closed back
+    for k in range(n):
+        k2 = (k + 1) % n
+        a, b = rings[-1][k], rings[-1][k2]
+        p.tri(a, b, HEAD_TIP); edge(a, HEAD_TIP)
+        a, b = rings[0][k], rings[0][k2]
+        p.tri(b, a, HEAD_BACK)
+    # horn plates sweeping back off the top corners
+    for s in (1, -1):
+        base0, base1 = rings[1][1] * [s, 1, 1] if s < 0 else rings[1][1], rings[0][2] * [s, 1, 1] if s < 0 else rings[0][2]
+        if s < 0:
+            base0, base1 = rings[1][n - 1], rings[0][n - 2]
+        tip = V(s * 1.15, 1.25, 1.55)
+        p.tri(base0, base1, tip)
+        p.edge(base0, tip, 0.06); p.edge(base1, tip, 0.06)
+    # the big white glow inside, and the eyes
+    p.glow.append((V(0, 0.1, -1.45), V(1.3, 0.9, 2.6), V(0, 0, 0), 0))
     for sx in (1, -1):
-        p.glow.append((V(sx * 1.08, 0.38, -1.25), V(0.12, 0.16, 0.7), V(0, sx * 0.35, sx * 0.15), 0))
+        p.glow.append((V(sx * 1.3, 0.35, -1.05), V(0.12, 0.18, 0.75), V(0, sx * 0.3, sx * 0.15), 0))
     return p
 
 
@@ -223,6 +232,15 @@ if __name__ == "__main__":
             sc.mesh(hot, w, (170, 255, 120), (170, 255, 120), glow=1.0)
             sc.mesh(glow, w, (255, 255, 255), (0, 0, 0), glow=1.0)
         return [sc.render(v, span=span, center=center) for v in views]
+    hover = (np.eye(3), np.zeros(3))
+    sc = Scene()
+    m, hot, glow = to_mesh(build_head(), G, tube)
+    up = mul(T([0, 0, 0]), ang(HEAD_PITCH, 0, 0))
+    sc.mesh(glow, up, (255, 255, 255), (0, 0, 0), glow=1.0)
+    sc.mesh(m, up, (40, 90, 230), (0, 0, 0), alpha=0.75)
+    sc.mesh(hot, up, (140, 190, 255), (140, 190, 255), glow=1.0)
+    close = [sc.render(v, span=6.5, center=(0, 1.8, 0)) for v in (rot(0.0, -0.12), rot(-math.pi / 2 + 0.3, -0.1), rot(math.pi * 0.8, 0.3))]
+    Image.fromarray(np.concatenate(close, 1)).save(os.path.join(out, "head_close.png"))
     hover = (np.eye(3), np.zeros(3))
     a = render(hover, [rot(0.0, -0.12), rot(-math.pi / 2 + 0.35, -0.1), rot(0, -1.25)], (0, 0.8, 0))
     Image.fromarray(np.concatenate(a, 1)).save(os.path.join(out, "facet.png"))

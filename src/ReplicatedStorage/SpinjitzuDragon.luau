@@ -1,7 +1,8 @@
--- SpinjitzuDragon v12.0  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuDragon v12.1  (ModuleScript in ReplicatedStorage)
 -- Elemental dragon that appears behind the character after Spinjitzu (Rising Dragon), built from
 -- plain parts like the show's energy dragons: flat see-through glowing facets with thick bright
--- outlines. One tall column behind you: a faceted head on top (white glow inside), a neck, body
+-- outlines. One tall column behind you: a chunky head on top tiled with outlined plates (a big
+-- white glow inside, pointed snout, ridge down the middle), a neck, body
 -- and pointed tail of chevron plates down your back, and flat bat wings out to the sides (zigzag
 -- top edge, scalloped bottom) that beat. Energy streaks fly off it, long drips hang off the wings,
 -- a big elemental cloud trails behind, and a bright column of energy shines below you while you
@@ -117,7 +118,7 @@ function Dragon.new(character, color, highlight, elementName)
 	self.flakeCol = Color3.fromHSV(h, 0.9, 0.85)
 	self.flakeDark = Color3.fromHSV(h, 0.95, 0.55)
 	-- see-through blocks + wings, bright edges + bones, white glow inside (presets can override)
-	self.plateCol = preset.DragonPlate or self.glowCol
+	self.plateCol = preset.DragonPlate or Color3.fromHSV(h, math.max(s, 0.75), 0.72)
 	self.edgeCol = preset.DragonEdge or self.glowCol:Lerp(WHITE, 0.55)
 	self.wingCol = preset.DragonWing or self.glowCol
 	self.coreCol = WHITE:Lerp(self.glowCol, 0.15)
@@ -291,6 +292,11 @@ function Dragon:_buildBody()
 	self.headFx.Parent = self.head
 	self.headFx.Position = Vector3.new(0, 0, -2 * self.hs)
 	self:_cloud(self.headFx, 0.6)
+	-- the glow inside the head lights things up
+	local glow = Instance.new("Attachment")
+	glow.Position = Vector3.new(0, 0.1, -1.45) * self.hs
+	glow.Parent = self.head
+	self.headLight = make("PointLight", { Color = self.coreCol, Brightness = 2.5, Range = 12 * sc, Shadows = false }, glow)
 	local tail = Instance.new("Attachment")
 	tail.Position = M.TailTip * sc
 	tail.Parent = self.body
@@ -504,6 +510,7 @@ function Dragon:Update(dt)
 	if self.light then
 		self.light.Brightness = 3 * a * (0.85 + 0.15 * math.sin(t * 7))
 	end
+	if self.headLight then self.headLight.Brightness = 2.5 * a end
 	return true
 end
 
