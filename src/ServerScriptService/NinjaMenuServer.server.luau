@@ -1,11 +1,12 @@
--- NinjaMenuServer v1.1  (Script in ServerScriptService)
+-- NinjaMenuServer v1.2  (Script in ServerScriptService)
 -- What the menu (NinjaMenu) asks for:
 --   "character", name  -> become that ninja (element + look), "You" = back to your own avatar
 --   "weapon", kind     -> add / remove that Golden Weapon ("All", "None" too). The list is the
 --                         player attribute GoldenWeapons ("Sword,Scythe" / "None"; unset = your
 --                         character's own); GoldenWeaponsServer hands them out
 --   "bots", "creation" -> the other three Tornado of Creation ninja as bots around you
---   "bots", "remove"   -> your bots go away
+--   "bots", "dummy" / "dummyInf" -> a training dummy (normal / infinite HP) in front of you
+--   "bots", "remove"   -> your bots and dummies go away
 -- Your look stays when you respawn.
 
 local Players = game:GetService("Players")
@@ -17,6 +18,8 @@ local GoldenWeapons = require(ReplicatedStorage:WaitForChild("GoldenWeapons"))
 local Config = require(ReplicatedStorage:WaitForChild("SpinjitzuConfig"))
 local Bots = require(script.Parent:WaitForChild("SpinjitzuBots"))
 local Creation = require(script.Parent:WaitForChild("SpinjitzuCreation"))
+local TrainingDummy = require(script.Parent:WaitForChild("TrainingDummy"))
+local MAX_DUMMIES = 8
 local WEAPON_KINDS = { "Sword", "Scythe", "Nunchucks", "Shurikens" }
 
 local remote = ReplicatedStorage:FindFirstChild("NinjaMenu")
@@ -127,6 +130,38 @@ local function removeCrew(player)
 	end
 end
 
+local function removeDummies(player)
+	for _, dummy in ipairs(CollectionService:GetTagged("PlayerDummy")) do
+		if dummy:GetAttribute("DummyOwner") == player.UserId then dummy:Destroy() end
+	end
+end
+
+-- a row of up to 4 in front of you, then another row behind it
+local function spawnDummy(player, infinite)
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+	local count = 0
+	for _, dummy in ipairs(CollectionService:GetTagged("PlayerDummy")) do
+		if dummy:GetAttribute("DummyOwner") == player.UserId then count += 1 end
+	end
+	if count >= MAX_DUMMIES then
+		notify(player, ("That's %d dummies already: Remove Bots to clear them"):format(MAX_DUMMIES))
+		return
+	end
+	local look = root.CFrame.LookVector
+	look = Vector3.new(look.X, 0, look.Z)
+	look = look.Magnitude > 0.1 and look.Unit or Vector3.new(0, 0, -1)
+	local right = look:Cross(Vector3.yAxis)
+	local at = root.Position + look * (9 + math.floor(count / 4) * 5) + right * ((count % 4) - 1.5) * 4.5
+	TrainingDummy.spawn(at, root.Position, {
+		infinite = infinite,
+		setup = function(dummy)
+			dummy:SetAttribute("DummyOwner", player.UserId)
+			CollectionService:AddTag(dummy, "PlayerDummy")
+		end,
+	})
+end
+
 local function spawnCrew(player)
 	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 	if not root then return end
@@ -173,7 +208,14 @@ remote.OnServerEvent:Connect(function(player, action, value)
 	elseif action == "weapon" then
 		pickWeapon(player, value)
 	elseif action == "bots" then
-		if value == "creation" then spawnCrew(player) elseif value == "remove" then removeCrew(player) end
+		if value == "creation" then
+			spawnCrew(player)
+		elseif value == "dummy" or value == "dummyInf" then
+			spawnDummy(player, value == "dummyInf")
+		elseif value == "remove" then
+			removeCrew(player)
+			removeDummies(player)
+		end
 	end
 end)
 
@@ -196,6 +238,7 @@ for _, player in ipairs(Players:GetPlayers()) do onPlayer(player) end
 Players.PlayerAdded:Connect(onPlayer)
 Players.PlayerRemoving:Connect(function(player)
 	removeCrew(player)
+	removeDummies(player)
 	originals[player] = nil
 	pending[player] = nil
 end)

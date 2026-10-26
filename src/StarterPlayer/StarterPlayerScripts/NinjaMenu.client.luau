@@ -1,6 +1,7 @@
--- NinjaMenu v1.1  (LocalScript in StarterPlayerScripts)
+-- NinjaMenu v1.2  (LocalScript in StarterPlayerScripts)
 -- The MENU button (bottom left, or M) opens a panel: pick your character (NinjaRoster), switch
--- Golden Weapons on and off (several at once), and spawn the Tornado of Creation crew as bots.
+-- Golden Weapons on and off (several at once), spawn the Tornado of Creation crew as bots and
+-- training dummies (normal / infinite HP).
 -- Cards show live 3D previews: your own avatar in each ninja's colours, and the weapon models
 -- from ReplicatedStorage. NinjaMenuServer does the actual change.
 
@@ -388,6 +389,17 @@ local function showCrew(viewport, elements)
 	viewport.CurrentCamera = camera
 end
 
+-- a training dummy: your avatar's shape in the dummy colours
+local function showDummy(viewport, cloth)
+	showCharacter(viewport, { Color = cloth, LegColor = cloth })
+	local model = viewport:FindFirstChildOfClass("Model")
+	for _, part in ipairs(model and model:GetChildren() or {}) do
+		if part:IsA("BasePart") and (part.Name:find("Arm") or part.Name:find("Hand") or part.Name == "Head") then
+			part.Color = Color3.fromRGB(190, 160, 110)
+		end
+	end
+end
+
 -- "no weapon": an empty disc with a slash through it
 local function showNone(disc)
 	new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(70, 70),
@@ -507,7 +519,15 @@ local function buildCards()
 		task.delay(0.3, function() setOpen(false) end) -- out of the way so you can press T
 	end)
 	button.Parent = botGrid
-	button, viewport, setSelected, disc = card(2, "Remove Bots", "your crew")
+	button, viewport = card(2, "Dummy", "200 HP, heals")
+	showDummy(viewport, Color3.fromRGB(150, 110, 70))
+	button.Activated:Connect(function() remote:FireServer("bots", "dummy") end)
+	button.Parent = botGrid
+	button, viewport = card(3, "Infinite", "can't die")
+	showDummy(viewport, Color3.fromRGB(70, 110, 160))
+	button.Activated:Connect(function() remote:FireServer("bots", "dummyInf") end)
+	button.Parent = botGrid
+	button, viewport, setSelected, disc = card(4, "Remove Bots", "crew + dummies")
 	showNone(disc)
 	button.Activated:Connect(function() remote:FireServer("bots", "remove") end)
 	button.Parent = botGrid
@@ -530,7 +550,7 @@ end
 local pages = {
 	{ name = "Characters", icon = ninjaIcon, tabs = { "Ninjas" }, grid = characterGrid },
 	{ name = "Weapons", icon = bladesIcon, tabs = { "Golden Weapons" }, grid = weaponGrid },
-	{ name = "Bots", icon = tornadoIcon, tabs = { "Tornado of Creation" }, grid = botGrid },
+	{ name = "Bots", icon = tornadoIcon, tabs = { "Bots & Dummies" }, grid = botGrid },
 }
 local sideItems = {}
 
