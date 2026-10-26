@@ -639,10 +639,10 @@ function Elements.Build.shatter(fx)
 			fx:_emitter(att, {
 				Texture = TEX_SPARK, EmissionDirection = Enum.NormalId.Top,
 				Orientation = Enum.ParticleOrientation.VelocityParallel,
-				Color = red and ColorSequence.new(WHITE:Lerp(hi, 0.5), c) or ColorSequence.new(black),
-				LightEmission = red and 1 or 0, Brightness = red and 4 or 1,
-				Size = NumberSequence.new({ kp(0, 0.35 * s), kp(1, 0.12 * s) }),
-				Squash = NumberSequence.new(red and 8 or 5),
+				Color = red and ColorSequence.new(hi, c) or ColorSequence.new(black), -- (red, not washed out white)
+				LightEmission = red and 0.8 or 0, Brightness = red and 2.5 or 1,
+				Size = NumberSequence.new({ kp(0, 0.45 * s), kp(1, 0.15 * s) }),
+				Squash = NumberSequence.new(red and 6 or 4),
 				Transparency = NumberSequence.new({ kp(0, 0), kp(0.6, 0.2), kp(1, 1) }),
 				Lifetime = NumberRange.new(0.3, 0.6), Rate = (red and 22 or 14) * d,
 				Speed = NumberRange.new(45 * s, 80 * s), SpreadAngle = Vector2.new(12, 12), Drag = 1,
