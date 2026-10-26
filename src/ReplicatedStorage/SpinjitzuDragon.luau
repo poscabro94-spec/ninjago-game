@@ -1,4 +1,4 @@
--- SpinjitzuDragon v15.1  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuDragon v15.2  (ModuleScript in ReplicatedStorage)
 -- Elemental dragon that appears behind the character after Spinjitzu (Rising Dragon), built from
 -- plain parts like the show's energy dragons: solid-looking panels in the element colour with thin
 -- glowing outlines. One tall column behind you: a cap-shaped faceted head on top (V seams down
@@ -211,9 +211,26 @@ function Dragon:_facets(root, data, scale, color)
 			self:_add(root, "Part", CFrame.lookAt((a + b) / 2, b), Vector3.new(th, th, (b - a).Magnitude + th), self.edgeCol, 0.1)
 		end
 	end
+	-- white light: blocks, oval eyes (a sphere mesh stretched), and flat triangles (inside the mouth)
 	for _, g in ipairs(data.glow) do
 		local tilt = g[3]
-		self:_add(root, "Part", CFrame.new(g[1] * scale) * CFrame.Angles(tilt.X, tilt.Y, tilt.Z), g[2] * scale, self.coreCol, g[4])
+		local p = self:_add(root, "Part", CFrame.new(g[1] * scale) * CFrame.Angles(tilt.X, tilt.Y, tilt.Z), g[2] * scale, self.coreCol, g[4])
+		if g[5] == "oval" then
+			local mesh = Instance.new("SpecialMesh")
+			mesh.MeshType = Enum.MeshType.Sphere
+			mesh.Parent = p
+		end
+	end
+	local gt = data.gtris or {}
+	for i = 1, #gt, 9 do
+		local a = Vector3.new(gt[i], gt[i + 1], gt[i + 2]) * scale
+		local b = Vector3.new(gt[i + 3], gt[i + 4], gt[i + 5]) * scale
+		local c = Vector3.new(gt[i + 6], gt[i + 7], gt[i + 8]) * scale
+		if (b - a):Cross(c - a).Magnitude > 1e-6 then
+			for _, w in ipairs(triangle(a, b, c, 0.04 * scale)) do
+				self:_add(root, "WedgePart", w[1], w[2], self.coreCol, 0)
+			end
+		end
 	end
 end
 

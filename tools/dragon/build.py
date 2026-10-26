@@ -24,10 +24,13 @@ def nums(vals, per_line):
 def piece(name, p):
     tris = [x for a, b, c in p.tris for v in (a, b, c) for x in v]
     edges = [x for a, b, th in p.edges for x in (*a, *b, th)]
-    glow = "\n".join("\t\t\t{ %s, %s, %s, %s }," % (vec(c), vec(s), vec(r), n(tr)) for c, s, r, tr in p.glow)
+    glow = "\n".join('\t\t\t{ %s, %s, %s, %s, "%s" },' % (vec(g[0]), vec(g[1]), vec(g[2]), n(g[3]), g[4] if len(g) > 4 else "block")
+                     for g in p.glow)
+    gtris = [x for a, b, c in p.gtris for v in (a, b, c) for x in v]
     return (f"\t{name} = {{\n\t\ttris = {{ -- x, y, z of each corner, 3 corners a triangle\n{nums(tris, 9)}\n\t\t}},\n"
             f"\t\tedges = {{ -- from x, y, z, to x, y, z, thickness\n{nums(edges, 7)}\n\t\t}},\n"
-            f"\t\tglow = {{ -- centre, size, tilt, transparency\n{glow}\n\t\t}},\n\t}},\n")
+            f"\t\tglow = {{ -- centre, size, tilt, transparency, shape (block / oval)\n{glow}\n\t\t}},\n"
+            f"\t\tgtris = {{ -- glowing white triangles\n{nums(gtris, 9)}\n\t\t}},\n\t}},\n")
 
 
 DRIPS = ["Wx", "Tb", "P"]

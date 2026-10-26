@@ -14,6 +14,7 @@ V = lambda x, y, z: np.array([x, y, z], float)
 class Piece:
     def __init__(self):
         self.tris, self.edges, self.glow = [], [], []
+        self.gtris = []   # glowing white triangles (the inside of the mouth)
 
     def tri(self, a, b, c):
         self.tris.append((a, b, c))
@@ -111,13 +112,29 @@ def build_head():
     for z in (-0.25, -0.95, -1.65):
         plate(p, V(0, 1.15, z), V(0.12, 0.38, 0.62), V(-0.5, 0, 0))
     plate(p, V(0, 0.72, -3.0), V(0.5, 0.2, 1.15), V(0.18, 0, 0))
-    # white light filling the open mouth (roof + floor), and the eyes
-    p.glow.append((V(0, -0.44, -1.7), V(1.3, 0.06, 2.9), V(0, 0, 0), 0))
+    # the open mouth: white light filling it (roof, floor and both sides of the gap) ...
+    p.glow.append((V(0, -0.44, -1.7), V(1.3, 0.06, 2.9), V(0, 0, 0), 0, "block"))
     jc = turn(V(0, -0.42, -1.6))
-    p.glow.append((jc, V(1.0, 0.08, 3.0), V(-JAW_OPEN, 0, 0), 0))
-    p.glow.append((V(0, -0.62, -1.5), V(0.9, 0.45, 2.3), V(-JAW_OPEN / 2, 0, 0), 0.15))  # the glow between
+    p.glow.append((jc, V(1.1, 0.06, 3.0), V(-JAW_OPEN, 0, 0), 0, "block"))
+    p.glow.append((V(0, -0.62, -1.5), V(0.9, 0.45, 2.3), V(-JAW_OPEN / 2, 0, 0), 0.15, "block"))
     for sx in (1, -1):
-        p.glow.append((V(sx * 1.3, 0.45, -1.35), V(0.1, 0.2, 0.9), V(0, sx * 0.25, sx * 0.2), 0))
+        A, B, C = V(sx * 0.4, -0.45, 0.25), V(sx * 0.3, -0.42, -3.25), turn(V(sx * 0.3, -0.42, -3.1))
+        p.gtris.append((A, B, C))
+    # ... with jagged teeth along both jaws, dark against the light
+    for sx in (1, -1):
+        for i, z in enumerate([-0.55, -1.0, -1.45, -1.9, -2.35, -2.8, -3.2]):
+            ln = 0.38 if i % 2 == 0 else 0.26
+            x = sx * (0.62 - 0.03 * i)
+            a, b, tip = V(x, -0.4, z + 0.2), V(x, -0.4, z - 0.2), V(x, -0.4 - ln, z - 0.05)
+            p.tri(a, b, tip); p.edge(a, tip, 0.03); p.edge(b, tip, 0.03)
+        for i, z in enumerate([-0.5, -0.95, -1.4, -1.85, -2.3, -2.75]):
+            ln = 0.32 if i % 2 == 0 else 0.22
+            x = sx * (0.6 - 0.03 * i)
+            a, b, tip = turn(V(x, -0.42, z + 0.2)), turn(V(x, -0.42, z - 0.2)), turn(V(x, -0.42 + ln, z - 0.05))
+            p.tri(a, b, tip); p.edge(a, tip, 0.03); p.edge(b, tip, 0.03)
+    # eyes: glowing white ovals in the sockets under the brows
+    for sx in (1, -1):
+        p.glow.append((V(sx * 1.27, 0.52, -1.35), V(0.16, 0.36, 0.8), V(0, sx * 0.25, sx * 0.2), 0, "oval"))
     return p
 
 
@@ -240,7 +257,9 @@ def to_mesh(piece, G, tube):
     for a, b, th in piece.edges:
         hot.line([a, b], th / 2)
     import rock
-    for c, s, r, _ in piece.glow:
+    for a, b, c in piece.gtris:
+        glow.tri(a, b, c)
+    for c, s, r, *_ in piece.glow:
         P = rock.corners({"c": c, "s": s, "r": r})
         for i, j, k, l in [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)]:
             glow.tri(P[i], P[j], P[k]); glow.tri(P[i], P[k], P[l])
