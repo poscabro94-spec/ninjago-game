@@ -1,4 +1,4 @@
--- NinjaMenu v1.4  (LocalScript in StarterPlayerScripts)
+-- NinjaMenu v1.5  (LocalScript in StarterPlayerScripts)
 -- The MENU button (bottom left, or M) opens a panel: pick your character (NinjaRoster), switch
 -- Golden Weapons on and off (several at once), spawn the Tornado of Creation crew as bots and
 -- training dummies (normal / infinite HP), and Duels: two NPCs clashing beams (you pick who
@@ -343,8 +343,21 @@ end
 local function showWeapon(viewport, kind)
 	local W = GoldenWeapons.Weapons[kind]
 	local model = new("Model")
-	local src = W and W.ModelName and ReplicatedStorage:FindFirstChild(W.ModelName, true)
-	if src then
+	local src = W and W.ModelName and (ReplicatedStorage:FindFirstChild(W.ModelName, true)
+		or (W.OldModelName and ReplicatedStorage:FindFirstChild(W.OldModelName, true)))
+	if src and W.Gauntlet then
+		-- Time Blade: bronze gauntlet, blades in the blade's colour
+		local copy = src:Clone()
+		copy.Parent = model
+		for _, d in ipairs(model:GetDescendants()) do
+			if d:IsA("BasePart") then
+				local blade = d.Name == "Blades"
+				d.Color = blade and W.BladeColor or W.GauntletColor
+				d.Material = blade and Enum.Material.SmoothPlastic or W.Material
+				if d:IsA("MeshPart") then d.TextureID = "" end
+			end
+		end
+	elseif src then
 		local copy = src:Clone()
 		copy.Parent = model
 		local parts = {}

@@ -1,4 +1,4 @@
--- ElementPowersServer v2.1  (Script in ServerScriptService)
+-- ElementPowersServer v2.2  (Script in ServerScriptService)
 -- The elemental powers (settings in ElementPowers): Lightning, Fire, Ice, Earth.
 -- The client (ElementPowersClient) sends:
 --   "ball", aim         tap left click: next shot of the combo
@@ -15,6 +15,7 @@ local TweenService = game:GetService("TweenService")
 local Debris = game:GetService("Debris")
 
 local Powers = require(ReplicatedStorage:WaitForChild("ElementPowers"))
+local TimeZones = require(ReplicatedStorage:WaitForChild("TimeZones"))
 local Config = require(ReplicatedStorage:WaitForChild("SpinjitzuConfig"))
 local HitEffects = require(script.Parent:WaitForChild("HitEffects"))
 local Status = require(script.Parent:WaitForChild("StatusEffects"))
@@ -502,7 +503,7 @@ local combos = {} -- [key] = { step, start, len, P }
 -- npc = the bot's controller (its damageScale weakens its shots)
 local function throw(key, check, aim, npc)
 	local character, root, P = check()
-	if not character or character:GetAttribute("PowerBeam") then return end
+	if not character or character:GetAttribute("PowerBeam") or character:GetAttribute("TimeStopped") then return end
 	local c = combos[key]
 	if not c or c.P ~= P then
 		c = { step = 0, start = 0, len = 0, P = P }
@@ -523,7 +524,7 @@ local function throw(key, check, aim, npc)
 	if ball.hands == "B" and P.Sounds.Zap then playSound(root, P.Sounds.Zap, 0.5, 0.7) end -- the big one charges up
 
 	task.delay(ball.time * ball.release, function()
-		if not character.Parent or not root.Parent then return end
+		if not character.Parent or not root.Parent or character:GetAttribute("TimeStopped") then return end
 		if ball.wave then
 			earthWave(P, character, root, aim, ball)
 			return
@@ -559,7 +560,7 @@ end
 local function startBeam(key, check, aim, npc)
 	if beams[key] then return end
 	local character, _, P = check()
-	if not character then return end
+	if not character or character:GetAttribute("TimeStopped") then return end -- (stopped time: Time Blades)
 	if validAim(aim) then character:SetAttribute("PowerAim", aim) end
 	character:SetAttribute("PowerElement", elementName(P))
 	character:SetAttribute("PowerBeam", true)
@@ -646,7 +647,7 @@ local function beamLine(b)
 	local from = meetPoint(root)
 	local dir = aim - from
 	if dir.Magnitude < 0.5 then return nil end
-	return from, from + dir.Unit * P.BeamRange, dir.Unit
+	return from, from + dir.Unit * TimeZones.clip(from, dir.Unit, P.BeamRange), dir.Unit
 end
 
 local function nameOf(character)
@@ -735,6 +736,7 @@ local function mash(key)
 	local c = b and b.clash
 	if not c then return end
 	local now = os.clock()
+	if b.character:GetAttribute("TimeStopped") then return end
 	if now - (lastMash[key] or 0) < 0.035 then return end -- (no faster than a human can press)
 	lastMash[key] = now
 	c.t += (c.a == key and 1 or -1) * Powers.ClashPush
@@ -780,8 +782,9 @@ RunService.Heartbeat:Connect(function(dt)
 		if not rootA or not rootB then
 			endClash(c, rootA and c.a or (rootB and c.b) or nil)
 		else
-			local rateA = A.npc and A.npc.mashRate or 0
-			local rateB = B.npc and B.npc.mashRate or 0
+			-- (a bot in stopped time can't mash)
+			local rateA = A.npc and not A.character:GetAttribute("TimeStopped") and A.npc.mashRate or 0
+			local rateB = B.npc and not B.character:GetAttribute("TimeStopped") and B.npc.mashRate or 0
 			c.t += (rateA - rateB) * dt * Powers.ClashPush
 			c.point = meetPoint(rootA):Lerp(meetPoint(rootB), c.t)
 			for _, s in ipairs({ { A, c.t }, { B, 1 - c.t } }) do
@@ -806,10 +809,11 @@ RunService.Heartbeat:Connect(function(dt)
 		end
 	end
 
-	-- damage ticks (not while clashing: the beams are pushing against each other)
+	-- damage ticks (not while clashing: the beams are pushing against each other, nor while the
+	-- caster's time is stopped). A beam stops where it runs into stopped time.
 	for _, b in pairs(beams) do
 		local character, root, P = b.check()
-		if character and not b.clash and now - b.last >= P.BeamTick then
+		if character and not b.clash and not character:GetAttribute("TimeStopped") and now - b.last >= P.BeamTick then
 			b.last = now
 			b.ticks += 1
 			local aim = character:GetAttribute("PowerAim")
@@ -820,7 +824,7 @@ RunService.Heartbeat:Connect(function(dt)
 					local params = RaycastParams.new()
 					params.FilterType = Enum.RaycastFilterType.Exclude
 					params.FilterDescendantsInstances = { character }
-					local hit = workspace:Spherecast(origin, P.BeamRadius, dir.Unit * P.BeamRange, params)
+					local hit = workspace:Spherecast(origin, P.BeamRadius, dir.Unit * TimeZones.clip(origin, dir.Unit, P.BeamRange), params)
 					local model = hit and hit.Instance:FindFirstAncestorOfClass("Model")
 					local hum = hit and Status.target(model, character)
 					if hum then beamHit(b, P, model, hum, now, dir.Unit) end
@@ -874,6 +878,7 @@ end
 
 local function faceTo(caster, pos)
 	local r = caster.root
+	if caster.bot:GetAttribute("TimeStopped") then return end
 	local flat = Vector3.new(pos.X, r.Position.Y, pos.Z)
 	if (flat - r.Position).Magnitude > 0.5 then r.CFrame = CFrame.lookAt(r.Position, flat) end
 end

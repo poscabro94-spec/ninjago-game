@@ -1,4 +1,4 @@
--- ElementPowersClient v3.0  (LocalScript in StarterPlayerScripts)
+-- ElementPowersClient v3.1  (LocalScript in StarterPlayerScripts)
 -- Your elemental power button (empty hands, any element): tap left click = the shot combo, hold
 -- left click = beam. In a beam clash: mash F (bar at the bottom shows who's winning).
 -- Turns you toward where you aim. Draws the effects for
@@ -9,6 +9,7 @@
 --   shots: crackling arcs / swirling wisps + an aura around lightning / energy balls, sparks in
 --          the hands while winding up
 --   clash: the beams end at the clash point in a big flickering burst
+--   stopped time (Time Blades): a beam ends at the edge of a time-stop bubble
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -18,6 +19,7 @@ local CollectionService = game:GetService("CollectionService")
 local TweenService = game:GetService("TweenService")
 
 local Powers = require(ReplicatedStorage:WaitForChild("ElementPowers"))
+local TimeZones = require(ReplicatedStorage:WaitForChild("TimeZones"))
 local Config = require(ReplicatedStorage:WaitForChild("SpinjitzuConfig"))
 local remote = ReplicatedStorage:WaitForChild("ElementPower")
 local player = Players.LocalPlayer
@@ -376,8 +378,10 @@ local function updateBeams(dt, rebendNow)
 				stop = clashPoint -- pushing against the other beam
 			else
 				rayParams.FilterDescendantsInstances = { character, fxFolder }
-				hit = workspace:Raycast(meet, dir * P.BeamRange, rayParams)
-				stop = hit and hit.Position or meet + dir * P.BeamRange
+				local range, frozen = TimeZones.clip(meet, dir, P.BeamRange)
+				hit = workspace:Raycast(meet, dir * range, rayParams)
+				stop = hit and hit.Position or meet + dir * range
+				if frozen and not hit then hit = true end -- (sparks where it runs into stopped time)
 			end
 			local clashing = typeof(clashPoint) == "Vector3"
 

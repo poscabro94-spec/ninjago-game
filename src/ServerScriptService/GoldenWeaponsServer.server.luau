@@ -1,4 +1,4 @@
--- GoldenWeaponsServer v7.5  (Script in ServerScriptService)
+-- GoldenWeaponsServer v8.0  (Script in ServerScriptService)
 -- Gives every player the Golden Weapon of their element on spawn (slot 1) and swaps it when
 -- they switch element: Lightning = Nunchucks of Lightning, Fire = Sword of Fire,
 -- Earth = Scythe of Quakes, Ice = Shurikens of Ice. The menu can hand out several at once (player
@@ -7,7 +7,8 @@
 -- Melee weapons: click = 4-hit combo; the server picks the swing, plays the sounds and does the
 -- hit check (damage + knockback + hit flash in the weapon's colour). Scythe finisher = quake.
 -- Shurikens: the client sends where you aim (ShurikenThrow), the server throws them, they
--- freeze whoever they hit. Also spawns a Training Dummy to fight.
+-- freeze whoever they hit. Time Blades: a gauntlet welded over the right forearm (the forearm
+-- itself is hidden while it's on), sized to the arm. Also spawns a Training Dummy to fight.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
@@ -33,7 +34,9 @@ local TAU = math.pi * 2
 do
 	local names = { N.ModelName, N.MeshName, S.ModelName, SC.ModelName, K.ModelName }
 	for _, W in pairs(GoldenWeapons.Weapons) do
-		if W.ModelName and not table.find(names, W.ModelName) then table.insert(names, W.ModelName) end
+		for _, name in ipairs({ W.ModelName, W.OldModelName }) do
+			if not table.find(names, name) then table.insert(names, name) end
+		end
 	end
 	for _, name in ipairs(names) do
 		local found = not ReplicatedStorage:FindFirstChild(name, true) and workspace:FindFirstChild(name, true)
@@ -244,6 +247,33 @@ local function shatter(pos)
 end
 
 -- frozen: can't move, ice grows up to the neck (StatusEffects). Hitting again restarts the time.
+-- Sword of Fire finisher: a burst of flame where it lands
+local function fireBurst(pos)
+	local a = Instance.new("Attachment")
+	a.Parent = fxAnchor(pos, 1.5)
+	local pe = Instance.new("ParticleEmitter")
+	pe.Texture = "rbxasset://textures/particles/fire_main.dds"
+	pe.Color = ColorSequence.new(S.FlameColor, S.FlameColor2)
+	pe.LightEmission = 1
+	pe.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1.2), NumberSequenceKeypoint.new(1, 0.2) })
+	pe.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(1, 1) })
+	pe.Lifetime = NumberRange.new(0.3, 0.55)
+	pe.Speed = NumberRange.new(16, 26)
+	pe.SpreadAngle = Vector2.new(180, 8)
+	pe.EmissionDirection = Enum.NormalId.Front
+	pe.Drag = 5
+	pe.Rate = 0
+	pe.Parent = a
+	pe:Emit(70)
+	local light = Instance.new("PointLight")
+	light.Color = S.HitColor
+	light.Brightness = 5
+	light.Range = 16
+	light.Parent = a
+	task.delay(0.2, function() light.Enabled = false end)
+	Debris:AddItem(a, 1.5)
+end
+
 local function freeze(model, hum, seconds)
 	Status.freeze({ Color = K.IceColor, CoreColor = Color3.new(1, 1, 1) }, model, hum, seconds)
 end
@@ -318,7 +348,7 @@ local function hookCombo(tool, W, handle)
 	tool.Activated:Connect(function()
 		local character = tool.Parent
 		local hum = character and character:FindFirstChildOfClass("Humanoid")
-		if not hum or hum.Health <= 0 then return end
+		if not hum or hum.Health <= 0 or character:GetAttribute("TimeStopped") then return end
 		local now = os.clock()
 		if now - combo.start < combo.len * 0.8 then return end -- still mid-swing
 		if now - (combo.start + combo.len) > W.ComboWindow then combo.step = 0 end
@@ -582,42 +612,6 @@ local function buildMelee(W, template)
 	joint.C0, joint.C1 = GoldenWeapons.DefaultHold, C1
 	joint.Parent = weapon
 
-	if W.Crystal then
-		-- Time Blades: the crystals glow in the blade's colour (placed in the mesh's own space)
-		local size = weapon.Size
-		local crystal = Instance.new("Part")
-		crystal.Name = "Crystal"
-		crystal.Material = Enum.Material.Neon
-		crystal.Color = W.EnergyColor
-		crystal.Transparency = 0.15
-		crystal.Size = size * W.Crystal.size
-		local mesh = Instance.new("SpecialMesh")
-		mesh.MeshType = Enum.MeshType.Sphere
-		mesh.Parent = crystal
-		bare(crystal)
-		crystal.CFrame = weapon.CFrame * CFrame.new(size * W.Crystal.offset)
-		local w = Instance.new("WeldConstraint")
-		w.Part0, w.Part1 = weapon, crystal
-		w.Parent = crystal
-		crystal.Parent = weapon
-		local glow = Instance.new("PointLight")
-		glow.Color, glow.Brightness, glow.Range = W.EnergyColor, 2, 7
-		glow.Parent = crystal
-		local motes = Instance.new("ParticleEmitter")
-		motes.Name = "Flames" -- (more of them while swinging, like the Sword of Fire's flames)
-		motes.Texture = "rbxasset://textures/particles/sparkles_main.dds"
-		motes.Color = ColorSequence.new(W.EnergyColor, Color3.new(1, 1, 1))
-		motes.LightEmission = 1
-		motes.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.25), NumberSequenceKeypoint.new(1, 0) })
-		motes.Lifetime = NumberRange.new(0.3, 0.6)
-		motes.Speed = NumberRange.new(0.5, 1.5)
-		motes.SpreadAngle = Vector2.new(180, 180)
-		motes.Rate = 8
-		motes.Parent = crystal
-		tool:SetAttribute("TimePower", W.TimePower)
-		tool.ToolTip = "Click to swing, F: " .. W.TimePower
-	end
-
 	local a0 = att(weapon, "TrailA", trailA, R)
 	local a1 = att(weapon, "TrailB", trailB, R)
 	goldTrail(weapon, a0, a1).Color = ColorSequence.new(W.TrailColor, W.TrailColor2)
@@ -675,6 +669,282 @@ local function buildMelee(W, template)
 		if ga then tool.Grip = GoldenWeapons.Palm:Inverse() * ga.CFrame end
 	end)
 	return tool
+end
+
+----------------------------------------------------------------------------------------
+-- Time Blades (gauntlets)
+----------------------------------------------------------------------------------------
+
+-- the imported gauntlet: { gauntlet = part, blades = part or nil }. The new import is a model with
+-- the parts "Gauntlet" + "Blades"; the first one (TimeBlade) was one piece. nil = not imported
+local function findGauntlet(W)
+	for _, where in ipairs({ ReplicatedStorage, workspace, game:GetService("ServerStorage") }) do
+		local obj = where:FindFirstChild(W.ModelName, true)
+		if obj then
+			local g, b = obj:FindFirstChild("Gauntlet", true), obj:FindFirstChild("Blades", true)
+			if g and g:IsA("BasePart") then return { gauntlet = g, blades = b and b:IsA("BasePart") and b or nil } end
+			-- parts named something else: the blades are the taller one
+			local parts = {}
+			for _, d in ipairs(obj:GetDescendants()) do
+				if d:IsA("BasePart") then table.insert(parts, d) end
+			end
+			local function tall(p) return math.max(p.Size.X, p.Size.Y, p.Size.Z) end
+			table.sort(parts, function(x, y) return tall(x) > tall(y) end)
+			if #parts >= 2 then return { gauntlet = parts[2], blades = parts[1] } end
+			if parts[1] then return { gauntlet = parts[1] } end
+		end
+	end
+	local old = findModel(W.OldModelName)
+	return old and { gauntlet = old[1] } or nil
+end
+
+-- the part axis (+-X/Y/Z) closest to v
+local function axisOf(v)
+	local a = Vector3.new(math.abs(v.X), math.abs(v.Y), math.abs(v.Z))
+	if a.X >= a.Y and a.X >= a.Z then return Vector3.xAxis * (v.X < 0 and -1 or 1) end
+	if a.Y >= a.Z then return Vector3.yAxis * (v.Y < 0 and -1 or 1) end
+	return Vector3.zAxis * (v.Z < 0 and -1 or 1)
+end
+
+local function absV(v) return Vector3.new(math.abs(v.X), math.abs(v.Y), math.abs(v.Z)) end
+
+-- the gauntlet (+ blades) for an arm: the main part, everything else welded to it, and the worn
+-- frame in its space (origin at the fist end, +Y toward the blade tips, +Z the armoured back of
+-- the hand), and how far the tips reach past the fist
+local function makeGauntlet(W, found, character, name)
+	local lower = character and character:FindFirstChild("RightLowerArm")
+	local hand = character and character:FindFirstChild("RightHand")
+	local fit = Vector3.one
+	if lower and hand then
+		fit = Vector3.new(math.clamp(lower.Size.X, 0.5, 2), math.clamp((lower.Size.Y + hand.Size.Y) / 1.35, 0.5, 2),
+			math.clamp(lower.Size.Z, 0.5, 2))
+	end
+	local want = W.Size * fit
+	local main, fist, reach
+	if found then
+		local g, b = found.gauntlet, found.blades
+		-- which way is up (toward the blades) and which way the armour faces, in g's own space
+		local up, front
+		local dims = { g.Size.X, g.Size.Y, g.Size.Z }
+		local axes = { Vector3.xAxis, Vector3.yAxis, Vector3.zAxis }
+		local thin = 1
+		for i = 2, 3 do
+			if dims[i] < dims[thin] then thin = i end
+		end
+		if b then
+			local off = g.CFrame:PointToObjectSpace(b.Position)
+			up = axisOf(off)
+			front = axes[thin] * (off:Dot(axes[thin]) < 0 and -1 or 1)
+		else
+			local long = 1
+			for i = 2, 3 do
+				if dims[i] > dims[long] then long = i end
+			end
+			up, front = axes[long], axes[thin]
+		end
+		local F = CFrame.fromMatrix(Vector3.zero, up:Cross(front), up) -- frame axes in g's space
+		-- each part's box in the frame, then one scale per axis so the whole thing is `want`
+		local boxes = {}
+		local lo, hi = Vector3.one * math.huge, -Vector3.one * math.huge
+		for _, p in ipairs({ g, b }) do
+			local rel = g.CFrame:ToObjectSpace(p.CFrame)
+			local half = absV(rel.RightVector) * p.Size.X / 2 + absV(rel.UpVector) * p.Size.Y / 2 + absV(rel.LookVector) * p.Size.Z / 2
+			local c = F:VectorToObjectSpace(rel.Position)
+			local h = absV(F:VectorToObjectSpace(half))
+			boxes[p] = { rel = rel, c = c, h = h }
+			lo, hi = lo:Min(c - h), hi:Max(c + h)
+		end
+		local k = want / (hi - lo)
+		-- a part's size, each of its sides scaled by the frame axis it lines up with
+		local function scaled(p, rel)
+			local size = { p.Size.X, p.Size.Y, p.Size.Z }
+			local s = Vector3.zero
+			for i, ax in ipairs(axes) do
+				local d = absV(F:VectorToObjectSpace(rel:VectorToWorldSpace(ax)))
+				s += ax * size[i] * ((d.X >= d.Y and d.X >= d.Z) and k.X or (d.Y >= d.Z and k.Y or k.Z))
+			end
+			return s
+		end
+		main = g:Clone()
+		for _, c in ipairs(main:GetChildren()) do c:Destroy() end
+		main.Size = scaled(g, CFrame.identity)
+		if main:IsA("MeshPart") then main.TextureID = "" end
+		main.Color, main.Material, main.Reflectance = W.GauntletColor, W.Material, W.Reflectance
+		if b then
+			local box = boxes[b]
+			local function bladePart(partName, grow)
+				local x = b:Clone()
+				for _, c in ipairs(x:GetChildren()) do c:Destroy() end
+				x.Name = partName
+				x.Size = scaled(b, box.rel) * grow
+				if x:IsA("MeshPart") then x.TextureID = "" end
+				bare(x)
+				x.CFrame = main.CFrame * CFrame.new(F:VectorToWorldSpace(box.c * k)) * box.rel.Rotation
+				local w = Instance.new("WeldConstraint")
+				w.Part0, w.Part1 = main, x
+				w.Parent = x
+				x.Parent = main
+				return x
+			end
+			local blades = bladePart("Blades", 1)
+			blades.Color, blades.Material, blades.Reflectance = W.BladeColor, Enum.Material.SmoothPlastic, 0.2
+			-- a see-through glowing copy around them
+			local glow = bladePart("BladeGlow", 1.06)
+			glow.Color, glow.Material, glow.Transparency, glow.CastShadow = W.EnergyColor, Enum.Material.Neon, 0.82, false
+		end
+		-- the fist ends at the top of the gauntlet (one-piece import: FistFrac up from the middle)
+		local fistY = b and boxes[g].h.Y * k.Y or W.FistFrac * (hi.Y - lo.Y) * k.Y
+		reach = hi.Y * k.Y - fistY
+		fist = CFrame.new(F:VectorToWorldSpace(Vector3.new(0, fistY, 0))) * F
+	else
+		-- placeholder: a bronze block on the forearm with two red blades
+		main = Instance.new("Part")
+		main.Size = Vector3.new(want.X * 0.6, want.Y * 0.7, want.Z * 0.85)
+		main.Color, main.Material, main.Reflectance = W.GauntletColor, W.Material, W.Reflectance
+		fist = CFrame.new(0, main.Size.Y * 0.22, 0)
+		reach = want.Y * 0.3
+		for _, side in ipairs({ -1, 1 }) do
+			piece(main, "Blade", Vector3.new(0.1, want.Y * 0.75, 0.18),
+				CFrame.new(side * want.X * 0.4, want.Y * 0.12, 0) * CFrame.Angles(0, 0, side * 0.15), W, W.BladeColor, Enum.Material.SmoothPlastic)
+		end
+	end
+	main.Name = name
+	bare(main)
+	-- light + a few sparkles in the blades' colour
+	local glow = Instance.new("PointLight")
+	glow.Color, glow.Brightness, glow.Range = W.EnergyColor, 1.5, 7
+	glow.Parent = main
+	local motes = Instance.new("ParticleEmitter")
+	motes.Name = "Flames" -- (more of them while swinging, like the Sword of Fire's flames)
+	motes.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	motes.Color = ColorSequence.new(W.EnergyColor, Color3.new(1, 1, 1))
+	motes.LightEmission = 1
+	motes.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(1, 0) })
+	motes.Lifetime = NumberRange.new(0.3, 0.6)
+	motes.Speed = NumberRange.new(0.5, 1.5)
+	motes.SpreadAngle = Vector2.new(180, 180)
+	motes.Rate = 8
+	local spot = Instance.new("Attachment")
+	spot.CFrame = fist * CFrame.new(0, reach * 0.4, 0)
+	spot.Parent = main
+	motes.Parent = spot
+	return main, fist, reach
+end
+
+-- where the fist end sits on the right hand (hand space)
+local function wornOnHand(character)
+	local hand = character and character:FindFirstChild("RightHand")
+	local half = hand and hand.Size.Y / 2 or 0.15
+	return CFrame.new(0, -half + 0.02, 0) * GoldenWeapons.Worn
+end
+
+-- the forearm + hand under the gauntlet are hidden while it's on
+local function hideForearm(character, hidden)
+	for _, name in ipairs({ "RightLowerArm", "RightHand" }) do
+		local p = character and character:FindFirstChild(name)
+		if p then
+			if hidden and p:GetAttribute("GauntletWas") == nil then
+				p:SetAttribute("GauntletWas", p.Transparency)
+				p.Transparency = 1
+			elseif not hidden and p:GetAttribute("GauntletWas") ~= nil then
+				p.Transparency = p:GetAttribute("GauntletWas")
+				p:SetAttribute("GauntletWas", nil)
+			end
+		end
+	end
+end
+
+local function buildGauntlet(W, found, character)
+	local tool = Instance.new("Tool")
+	tool.Name = W.ToolName
+	tool.CanBeDropped = false
+	tool.RequiresHandle = true
+	local handle = Instance.new("Part")
+	handle.Name = "Handle"
+	handle.Size = Vector3.new(0.2, 0.2, 0.2)
+	handle.Transparency = 1
+	bare(handle)
+	handle.Parent = tool
+	local weapon, fist, reach = makeGauntlet(W, found, character, "Weapon")
+	weapon.CFrame = handle.CFrame * fist:Inverse()
+	weapon.Parent = tool
+	local joint = Instance.new("Weld")
+	joint.Name = "WeaponJoint"
+	joint.Part0, joint.Part1 = handle, weapon
+	joint.C0, joint.C1 = CFrame.identity, fist
+	joint.Parent = weapon
+
+	-- trail from the fist to the blade tips
+	local a0 = Instance.new("Attachment")
+	a0.Name = "TrailA"
+	a0.CFrame = fist * CFrame.new(0, reach * 0.2, 0)
+	a0.Parent = weapon
+	local a1 = Instance.new("Attachment")
+	a1.Name = "TrailB"
+	a1.CFrame = fist * CFrame.new(0, reach, 0)
+	a1.Parent = weapon
+	goldTrail(weapon, a0, a1).Color = ColorSequence.new(W.TrailColor, W.TrailColor2)
+	local sparks = Instance.new("ParticleEmitter")
+	sparks.Name = "Sparks"
+	sparks.Rate = 0
+	sparks.Color = ColorSequence.new(W.TrailColor, W.TrailColor2)
+	sparks.LightEmission = 1
+	sparks.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 0) })
+	sparks.Lifetime = NumberRange.new(0.15, 0.4)
+	sparks.Speed = NumberRange.new(6, 14)
+	sparks.SpreadAngle = Vector2.new(180, 180)
+	sparks.Drag = 4
+	sparks.Parent = a1
+
+	hookCombo(tool, W, handle)
+	tool:SetAttribute("TimePower", W.TimePower)
+	local keys = {}
+	for _, a in ipairs(W.Abilities or {}) do table.insert(keys, a.key .. ": " .. a.name) end
+	tool.ToolTip = "Click to slash. " .. table.concat(keys, ", ")
+	-- the handle sits on the hand (RightGrip = the hand's grip attachment -> tool.Grip)
+	local function grip(char)
+		local hand = char and char:FindFirstChild("RightHand")
+		local ga = hand and hand:FindFirstChild("RightGripAttachment")
+		if ga then tool.Grip = wornOnHand(char):Inverse() * ga.CFrame end
+	end
+	grip(character)
+	local wearer
+	tool.Equipped:Connect(function()
+		local char = tool.Parent
+		grip(char)
+		wearer = char
+		-- the forearm goes when the gauntlet comes off your hip
+		task.delay(W.Draw.time * W.Draw.grabAt, function()
+			if tool.Parent == char then hideForearm(char, true) end
+		end)
+	end)
+	tool.Unequipped:Connect(function()
+		hideForearm(wearer, false)
+		wearer = nil
+	end)
+	tool.Destroying:Connect(function() hideForearm(wearer, false) end)
+	return tool
+end
+
+-- the gauntlet hanging off your right hip, blades down
+local function buildGauntletHolster(character, W, found)
+	local torso = character:WaitForChild("LowerTorso", 5) or character:FindFirstChild("UpperTorso")
+	if not torso then return nil end
+	local old = character:FindFirstChild(W.HolsterName)
+	if old then old:Destroy() end
+	local folder = Instance.new("Folder")
+	folder.Name = W.HolsterName
+	local p, fist = makeGauntlet(W, found, character, "OnHip")
+	p.PointLight:Destroy()
+	local cf = CFrame.new(1.45, -1.45, 0) * GoldenWeapons.Worn * fist:Inverse()
+	p.CFrame = torso.CFrame * cf
+	local w = Instance.new("Weld")
+	w.Part0, w.Part1 = torso, p
+	w.C0 = cf
+	w.Parent = p
+	p.Parent = folder
+	folder.Parent = character
+	return folder
 end
 
 -- one shuriken: the imported model or a placeholder (flat gold diamond with an icy centre).
@@ -1006,6 +1276,10 @@ local function buildWeapon(W, char, withHolster)
 	elseif W == K then
 		local model = findModel(K.ModelName)
 		return buildShurikens(model), withHolster and buildShurikenHolster(char, model) or nil
+	elseif W.Gauntlet then
+		local found = findGauntlet(W)
+		if not found then warn("[GoldenWeapons] " .. W.ModelName .. " not imported, using a placeholder") end
+		return buildGauntlet(W, found, char), withHolster and buildGauntletHolster(char, W, found) or nil
 	end
 	local model = findModel(W.ModelName)
 	return buildMelee(W, model), withHolster and buildBackHolster(char, W, model) or nil
@@ -1064,7 +1338,8 @@ end
 throwRemote.OnServerEvent:Connect(function(player, aim)
 	if typeof(aim) ~= "Vector3" or aim.X ~= aim.X or aim.Y ~= aim.Y or aim.Z ~= aim.Z then return end
 	local char = player.Character
-	local tool = char and char:FindFirstChild(K.ToolName)
+	if not char or char:GetAttribute("TimeStopped") then return end
+	local tool = char:FindFirstChild(K.ToolName)
 	local throw = tool and throwers[tool]
 	if throw then throw(aim) end
 end)

@@ -1,4 +1,4 @@
--- GoldenWeapons v7.0  (ModuleScript in ReplicatedStorage)
+-- GoldenWeapons v8.0  (ModuleScript in ReplicatedStorage)
 -- Shared settings + the client side of the Golden Weapons. Each element has its own weapon
 -- (ByElement); switching element (E) swaps it.
 -- Nunchucks of Lightning (moves copied from the reference video):
@@ -16,9 +16,10 @@
 --   Scythe combo: reap -> reap back -> spin -> slam (quake: shockwave + rocks around the impact)
 -- Shurikens of Ice: one in each hand, click throws them where you aim (alternating hands,
 --   4th throw = both). A hit freezes the target. The server does the flying + hits.
--- Time Blades (not tied to an element; picked in the menu): one-handed, the crystals glow in the
---   blade's colour. Click = swipe -> back-swipe -> thrust (the thrust time-locks them);
---   F = the blade's time power (TimeBladesServer). So far: the Pause Time Blade (red).
+-- Time Blades (not tied to an element; picked in the menu): worn like a glove on the right forearm
+--   (bronze gauntlet, the two blades curve up past the fist, in the blade's colour). The arm moves
+--   on its own (no IK): click = claw slash -> back-slash -> punch (the punch time-locks them).
+--   Powers on keys (Abilities; TimeBladesServer does them). So far: the Pause Time Blade (red).
 -- Weapons without an imported model are placeholders built from blocks.
 
 local Players = game:GetService("Players")
@@ -201,29 +202,24 @@ local K = GoldenWeapons.Shurikens
 -- in the hand: shuriken flat side out to the side, just below the fist (shuriken space: Y = flat side)
 GoldenWeapons.ShurikenHold = CFrame.new(0, -0.45, -0.1) * CFrame.Angles(0, 0, math.pi / 2)
 
--- the Time Blades share one model ("TimeBlade", assets/TimeBlade.obj) and differ in colour + power
+-- the Time Blades share one model (assets/TimeGauntlet.obj, parts "Gauntlet" + "Blades") and differ
+-- in the blades' colour + powers
 local function timeBlade(name, color, power)
 	return {
 		ToolName = name,
 		HolsterName = "TimeBladeHolster",
-		ModelName = "TimeBlade",
-		Length = 2.6,
-		FlipModel = false,
-		FlipEdge = false,
-		GripFromEnd = 0.35,           -- the handle at the bottom (low, so the end doesn't poke into you)
-		LeftGap = 0.4,
-		HiltLength = 0.9,
-		BackGrip = Vector3.new(1.05, -1.0, 0.35), -- on your right hip
-		BackAngle = math.pi - 0.25,
-		-- glowing crystals, as a part of the model's size (x, y, z) from its centre
-		Crystal = { offset = Vector3.new(0, 0.08, -0.22), size = Vector3.new(0.55, 0.27, 0.5) },
-		-- placeholder blade
-		BladeLength = 1.7, BladeWidth = 0.5, BladeThickness = 0.12, GripLength = 0.7,
-		GripColor = Color3.fromRGB(60, 40, 30),
-		CoreColor = color,
-		Color = Color3.fromRGB(235, 178, 25),
+		Gauntlet = true,
+		ModelName = "TimeGauntlet",
+		OldModelName = "TimeBlade",   -- the first import (one piece, so it's all bronze)
+		-- worn size in studs (across the blades, from the cuff to the blade tips, front to back),
+		-- for a 1-stud blocky arm (scaled to other arms). The cuff reaches just past the elbow.
+		Size = Vector3.new(1.6, 2.25, 1.15),
+		FistFrac = 0.22,              -- one-piece import: where the fist ends, up from its middle (part of its height)
+		GauntletColor = Color3.fromRGB(150, 96, 62),
+		BladeColor = color:Lerp(Color3.new(0, 0, 0), 0.3),
+		Color = Color3.fromRGB(150, 96, 62),
 		Material = Enum.Material.Metal,
-		Reflectance = 0.12,
+		Reflectance = 0.05,
 		EnergyColor = color,
 		TrailColor = color:Lerp(Color3.new(1, 1, 1), 0.4),
 		TrailColor2 = color,
@@ -232,9 +228,9 @@ local function timeBlade(name, color, power)
 		TimePower = power,
 		ComboWindow = 1.2,
 		Swings = {
-			{ name = "swipe",     time = 0.4,  damage = 10, hitAt = 0.55, range = 5.5, knock = 16 },
-			{ name = "backswipe", time = 0.4,  damage = 10, hitAt = 0.5,  range = 5.5, knock = 16 },
-			{ name = "thrust",    time = 0.5,  damage = 14, hitAt = 0.55, range = 5.5, reach = 4, knock = 10, final = true, timeLock = 1.5 },
+			{ name = "swipe",     time = 0.4, damage = 10, hitAt = 0.6,  range = 5.5, knock = 16 },
+			{ name = "backswipe", time = 0.4, damage = 10, hitAt = 0.6,  range = 5.5, knock = 16 },
+			{ name = "thrust",    time = 0.5, damage = 14, hitAt = 0.55, range = 5.5, reach = 4, knock = 10, final = true, timeLock = 1.5 },
 		},
 		Draw = { name = "draw", time = 0.7, grabAt = 0.4 },
 		Sounds = {
@@ -245,10 +241,20 @@ local function timeBlade(name, color, power)
 	}
 end
 
--- Pause: F stops time in a dome in front of you (everyone inside frozen, shots hang in the air)
+-- Pause (red): stops time
 GoldenWeapons.PauseBlade = timeBlade("Pause Time Blade", Color3.fromRGB(255, 40, 40), "Pause")
-GoldenWeapons.PauseBlade.Pause = { Radius = 14, Time = 4, Cooldown = 12, Reach = 10 }
 local PB = GoldenWeapons.PauseBlade
+-- key, what it's called, cooldown (seconds), arm move while casting (+ how long it takes)
+PB.Abilities = {
+	{ id = "Stop",  key = "F", name = "Time Stop",     cooldown = 12, move = "raise", moveTime = 0.6 },
+	{ id = "Bolt",  key = "G", name = "Pause Bolt",    cooldown = 4,  move = "shoot", moveTime = 0.35 },
+	{ id = "Step",  key = "V", name = "Stop-Step",     cooldown = 9,  move = "dash",  moveTime = 0.9 },
+	{ id = "World", key = "Z", name = "Stopped World", cooldown = 40, move = "raise", moveTime = 0.8 },
+}
+PB.Pause = { Radius = 14, Time = 6, Reach = 10 }                          -- F: dome where you aim
+PB.Bolt = { Speed = 85, Range = 110, Radius = 1.2, Lock = 3, Damage = 8 } -- G: locks the first one it hits
+PB.Step = { Radius = 45, Freeze = 1.2, Distance = 26, HitWidth = 4.5, Damage = 18, Knock = 30 } -- V
+PB.World = { Radius = 120, Time = 5 }                                     -- Z: everything around you stops
 
 GoldenWeapons.Weapons = { Nunchucks = N, Sword = S, Scythe = SC, Shurikens = K, PauseBlade = PB }
 -- element -> weapon (elements not listed get none)
@@ -435,24 +441,47 @@ local function blendKey(a, b, s)
 	return { cf = a.cf:Lerp(b.cf, s), waist = a.waist:Lerp(b.waist, s), left = lerp(a.left, b.left, s) }
 end
 
--- Time Blades: one hand, the blade up in front of the right shoulder
-PB.Idle = wkey(0, V(1.35, -0.55, -0.75), V(0.25, 0.9, -0.3), V(0, 0, -1), nil, 0)
+-- Time Blades: worn on the forearm, so a move is just the right arm (shoulder turn, elbow bend)
+-- + the upper body. arm(): raised forward by `up`, then swung across by `across` (+ = to the left),
+-- `out` = away from the body
+local function arm(up, across, out) return R(0, across, 0) * R(up, 0, out) end
+local function G(e, sh, el, waist) return { e = e, sh = sh, el = el, waist = waist or CFrame.identity } end
+-- guard: forearm up in front of the shoulder, blades to the sky
+PB.Guard = G(0, arm(0.55, 0, 0.2), 1.75)
 PB.Moves = {
-	swipe = { -- low on the right, then up across to high on the left
-		wkey(0.3, V(1.25, -0.7, -0.8), V(0.3, -0.7, -0.65), V(-0.6, 0.7, 0), R(0, -0.4, 0), 0),
-		wkey(0.6, V(0, 0, -1.1), V(-0.3, 0.6, -0.75), V(-1, 0.8, 0), R(0, 0.2, 0), 0),
-		wkey(1, V(-0.3, 0.8, -0.85), V(-0.6, 0.7, 0.3), V(-0.6, 0.6, 0.4), R(0, 0.5, 0), 0),
+	swipe = { -- wind up out to the right, then a claw slash across to the left
+		G(0.3, arm(1.3, -1.1, 0.1), 0.9, R(0, -0.35, 0)),
+		G(0.65, arm(1.35, 0.85, 0.1), 0.15, R(0, 0.45, 0)),
+		G(1, arm(1.3, 0.8, 0.1), 0.3, R(0, 0.45, 0)),
 	},
 	backswipe = { -- and back across to the right
-		wkey(0.5, V(0.45, -0.4, -1.1), V(0.6, 0.4, -0.7), V(1, 0.6, 0), R(0, -0.1, 0), 0),
-		wkey(1, V(1.35, -0.55, -0.75), V(0.25, 0.9, -0.3), V(0, 0, -1), nil, 0),
+		G(0.3, arm(1.2, 0.95, 0.1), 0.8, R(0, 0.4, 0)),
+		G(0.65, arm(1.5, -1.1, 0.1), 0.15, R(0, -0.45, 0)),
+		G(1, arm(1.45, -1.0, 0.1), 0.3, R(0, -0.4, 0)),
 	},
-	thrust = { -- pull back by the hip, then stab straight forward
-		wkey(0.35, V(1.3, -0.5, -0.7), V(0.1, 0.25, -1), V(0, 1, 0), R(0, -0.3, 0), 0),
-		wkey(0.6, V(0.35, -0.25, -1.55), V(-0.05, 0.1, -1), V(0, 1, 0), R(0, 0.15, 0), 0),
-		wkey(1, V(0.35, -0.25, -1.5), V(-0.05, 0.1, -1), V(0, 1, 0), R(0, 0.1, 0), 0),
+	thrust = { -- fist back by the chest, then a straight punch, blades first
+		G(0.4, arm(0.45, 0, 0.35), 2.2, R(0, -0.35, 0)),
+		G(0.55, arm(1.55, 0.15, 0), 0, R(0, 0.2, 0)),
+		G(1, arm(1.55, 0.15, 0), 0.05, R(0, 0.15, 0)),
 	},
+	-- powers
+	raise = { G(0.3, arm(2.9, 0, 0.15), 0.15, R(0.1, 0, 0)), G(1, arm(2.9, 0, 0.15), 0.2, R(0.1, 0, 0)) }, -- fist to the sky
+	shoot = { G(0.35, arm(0.6, 0, 0.4), 2.0, R(0, -0.3, 0)), G(0.55, arm(1.5, 0.1, 0.05), 0, R(0, 0.15, 0)), G(1, arm(1.5, 0.1, 0.05), 0.1) },
+	dash = { G(0.15, arm(1.3, 0.9, 0.1), 0.2, R(0, 0.45, 0)), G(1, arm(1.3, 0.9, 0.1), 0.2, R(0, 0.45, 0)) }, -- slashed past them
+	draw = { G(0.4, arm(0.1, 0, 0.35), 0.3), G(1, arm(0.55, 0, 0.2), 1.75) }, -- down to the hip, then up into the guard
 }
+
+-- worn on the hand: model up (blade tips) = down the fingers, armour on the back of the hand
+-- (in RightHand space: the gauntlet's +Y -> hand -Y, its +Z (armour) -> hand +X)
+GoldenWeapons.Worn = CFrame.fromMatrix(Vector3.zero, Vector3.zAxis, -Vector3.yAxis)
+
+-- the weapon settings for a tool name (nil = not a Golden Weapon)
+function GoldenWeapons.ForTool(name)
+	for _, W in pairs(GoldenWeapons.Weapons) do
+		if W.ToolName == name then return W end
+	end
+	return nil
+end
 
 local function weaponKey(W, kind, e, from)
 	local prevE, prev = 0, from
@@ -756,6 +785,74 @@ local function meleeStep(W, tool, character, pose, dt, armsFree)
 	return out
 end
 
+-- Time Blades: the arm follows the keyframes (the gauntlet is welded to the hand). Clicks bump
+-- SwingId; powers bump CastId (CastMove = which arm move, CastTime = how long)
+local function blendPose(a, b, s)
+	return { sh = a.sh:Lerp(b.sh, s), el = lerp(a.el, b.el, s), waist = a.waist:Lerp(b.waist, s) }
+end
+
+local function poseKey(keys, e, from)
+	local prevE, prev = 0, from
+	for _, k in ipairs(keys) do
+		if e <= k.e then return blendPose(prev, k, smooth((e - prevE) / math.max(k.e - prevE, 1e-3))) end
+		prevE, prev = k.e, k
+	end
+	return prev
+end
+
+local function gauntletStep(W, tool, pose, dt, armsFree)
+	local st = states[tool]
+	if not st then
+		st = { lastId = tool:GetAttribute("SwingId") or 0, castId = tool:GetAttribute("CastId") or 0,
+			move = "draw", time = W.Draw.time, t = 0, key = W.Guard }
+		trackTool(tool, st)
+	end
+	local function start(move, time)
+		st.move, st.time, st.t, st.from, st.recoverFrom = move, time, 0, st.key, nil
+		setTrails(tool, true)
+		setFlames(tool, 30)
+	end
+	local id = tool:GetAttribute("SwingId") or 0
+	if id ~= st.lastId then
+		st.lastId = id
+		local swing = W.Swings[tool:GetAttribute("Swing") or 1] or W.Swings[1]
+		start(swing.name, swing.time)
+	end
+	local cast = tool:GetAttribute("CastId") or 0
+	if cast ~= st.castId then
+		st.castId = cast
+		local move = tool:GetAttribute("CastMove")
+		if W.Moves[move] then start(move, tool:GetAttribute("CastTime") or 0.6) end
+	end
+
+	local key = W.Guard
+	if st.move then
+		st.t += dt
+		local e = math.clamp(st.t / st.time, 0, 1)
+		key = poseKey(W.Moves[st.move], e, st.from or W.Guard)
+		if e >= 1 then
+			st.move, st.recoverFrom, st.recover = nil, key, 0
+			setTrails(tool, false)
+			setFlames(tool, 8)
+		end
+	elseif st.recoverFrom then
+		-- ease back into the guard
+		st.recover += dt
+		local s = smooth(st.recover / 0.3)
+		key = blendPose(st.recoverFrom, W.Guard, s)
+		if s >= 1 then st.recoverFrom = nil end
+	end
+	st.key = key
+
+	local out = table.clone(pose)
+	if armsFree then
+		out.RightShoulder, out.RightElbow = key.sh, R(key.el, 0, 0)
+		out.Waist = key.waist * (out.Waist or CFrame.identity)
+	end
+	hideInHand(tool, st, st.move == "draw" and st.t < W.Draw.time * W.Draw.grabAt)
+	return out
+end
+
 -- Shurikens: hold one in each hand, throw animation (the server throws the real ones)
 local function shurikenStep(tool, pose, dt, armsFree)
 	local st = states[tool]
@@ -807,8 +904,9 @@ function GoldenWeapons.Step(character, root, pose, dt, armsFree)
 	if not tool then return pose end
 	if tool.Name == S.ToolName then return meleeStep(S, tool, character, pose, dt, armsFree) end
 	if tool.Name == SC.ToolName then return meleeStep(SC, tool, character, pose, dt, armsFree) end
-	if tool.Name == PB.ToolName then return meleeStep(PB, tool, character, pose, dt, armsFree) end
 	if tool.Name == K.ToolName then return shurikenStep(tool, pose, dt, armsFree) end
+	local W = GoldenWeapons.ForTool(tool.Name)
+	if W and W.Gauntlet then return gauntletStep(W, tool, pose, dt, armsFree) end
 	if tool.Name ~= N.ToolName then return pose end
 	local handle = tool:FindFirstChild("Handle")
 	local stickB = tool:FindFirstChild("StickB")
