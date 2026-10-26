@@ -1,4 +1,4 @@
--- NinjaMenuServer v1.2  (Script in ServerScriptService)
+-- NinjaMenuServer v1.3  (Script in ServerScriptService)
 -- What the menu (NinjaMenu) asks for:
 --   "character", name  -> become that ninja (element + look), "You" = back to your own avatar
 --   "weapon", kind     -> add / remove that Golden Weapon ("All", "None" too). The list is the
@@ -6,6 +6,7 @@
 --                         character's own); GoldenWeaponsServer hands them out
 --   "bots", "creation" -> the other three Tornado of Creation ninja as bots around you
 --   "bots", "dummy" / "dummyInf" -> a training dummy (normal / infinite HP) in front of you
+--   "bots", "shatter"  -> a bot Shatterspinning in a circle in front of you (practise the counter)
 --   "bots", "remove"   -> your bots and dummies go away
 -- Your look stays when you respawn.
 
@@ -134,6 +135,29 @@ local function removeDummies(player)
 	for _, dummy in ipairs(CollectionService:GetTagged("PlayerDummy")) do
 		if dummy:GetAttribute("DummyOwner") == player.UserId then dummy:Destroy() end
 	end
+	for _, bot in ipairs(CollectionService:GetTagged("PlayerShatterBot")) do
+		if bot:GetAttribute("BotOwner") == player.UserId then bot:Destroy() end
+	end
+end
+
+-- a bot Shatterspinning round in a circle in front of you (up to 3 each; the oldest goes)
+local function spawnShatterBot(player)
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+	local mine = {}
+	for _, bot in ipairs(CollectionService:GetTagged("PlayerShatterBot")) do
+		if bot:GetAttribute("BotOwner") == player.UserId then table.insert(mine, bot) end
+	end
+	if #mine >= 3 then mine[1]:Destroy() end
+	local look = root.CFrame.LookVector
+	look = Vector3.new(look.X, 0, look.Z)
+	look = look.Magnitude > 0.1 and look.Unit or Vector3.new(0, 0, -1)
+	local Shatter = require(script.Parent:WaitForChild("Shatterspin"))
+	local bot = Shatter.spawnBot(root.Position + look * (26 + #mine * 8), "ShatterBot_" .. player.Name, 10)
+	bot:SetAttribute("BotOwner", player.UserId)
+	CollectionService:AddTag(bot, "PlayerShatterBot")
+	notify(player, ("Shatterspin bot: get on the dragon (%s), lock on (%s), fly into it"):format(
+		Config.DragonKey and Config.DragonKey.Name or "R", Config.DragonLockKey and Config.DragonLockKey.Name or "C"))
 end
 
 -- a row of up to 4 in front of you, then another row behind it
@@ -210,6 +234,8 @@ remote.OnServerEvent:Connect(function(player, action, value)
 	elseif action == "bots" then
 		if value == "creation" then
 			spawnCrew(player)
+		elseif value == "shatter" then
+			spawnShatterBot(player)
 		elseif value == "dummy" or value == "dummyInf" then
 			spawnDummy(player, value == "dummyInf")
 		elseif value == "remove" then

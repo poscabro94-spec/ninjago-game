@@ -1,11 +1,10 @@
--- Shatterspin v1.0  (ModuleScript in ServerScriptService)
+-- Shatterspin v1.1  (ModuleScript in ServerScriptService)
 -- Shatterspin (X): a red + black, destructive Spinjitzu. Faster than Spinjitzu, it wrecks anyone
 -- it touches (damage + flung away), throws loose things around, and nothing can hurt you while
 -- it's on. Lasts ShatterTime seconds, then ShatterCooldown before you can do it again.
--- The only counter: on the Rising Dragon, hold your beam on them for DragonLockTime seconds to lock
--- on (the beam does nothing else to them), then fly straight into them. That breaks it: a big hit,
--- they're thrown and can't Shatterspin for a while; you land.
--- Used by SpinjitzuServer (start / stop / unlock) and ElementPowersServer (beamTick).
+-- The only counter: on the Rising Dragon, press DragonLockKey to lock onto them, then fly straight
+-- into them. That breaks it: a big hit, they're thrown and can't Shatterspin for a while; you land.
+-- Used by SpinjitzuServer (start / stop / lockOn / unlock), SpinjitzuBot + NinjaMenuServer (bots).
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -31,7 +30,6 @@ local HIT = { -- how its hits look (HitEffects)
 
 local active = {}    -- [character] = { humanoid, token, look = { element, color, highlight }, speed }
 local hitAt = {}     -- [victim] = os.clock() of its last Shatterspin hit
-local acquiring = {} -- [rider] = { target, t, seen }
 local locks = {}     -- [rider] = target
 
 local function rootOf(model)
@@ -104,31 +102,11 @@ end
 -- lock-on (Rising Dragon riders)
 ----------------------------------------------------------------------------------------
 
--- (rider's "DragonLocking" ObjectValue = who it's locking onto, "DragonLock" = locked on)
-local function setValue(rider, name, target)
-	local v = rider:FindFirstChild(name)
-	if not target then
-		if v then v:Destroy() end
-		return
-	end
-	if not v then
-		v = Instance.new("ObjectValue")
-		v.Name = name
-		v.Parent = rider
-	end
-	v.Value = target
-end
-
-local function stopAcquiring(rider)
-	acquiring[rider] = nil
-	rider:SetAttribute("LockProgress", nil)
-	setValue(rider, "DragonLocking", nil)
-end
-
+-- (the rider's "DragonLock" ObjectValue = who they're locked onto: clients show it)
 function Shatter.unlock(rider)
 	locks[rider] = nil
-	stopAcquiring(rider)
-	setValue(rider, "DragonLock", nil)
+	local v = rider:FindFirstChild("DragonLock")
+	if v then v:Destroy() end
 end
 
 local function onDragon(rider)
@@ -136,26 +114,20 @@ local function onDragon(rider)
 	return phase == "rise" or phase == "fly"
 end
 
--- a dragon rider's beam is on `target` for another `dt` seconds
-function Shatter.beamTick(rider, target, dt)
-	if not active[target] or not onDragon(rider) or locks[rider] == target then return end
-	local now = os.clock()
-	local a = acquiring[rider]
-	if a and a.target == target and now - a.seen < 0.45 then
-		a.t += dt
-	else
-		a = { target = target, t = dt }
-		acquiring[rider] = a
+-- the rider pressed the lock key with `target` picked (their client picks whoever's nearest the
+-- middle of the screen)
+function Shatter.lockOn(rider, target)
+	local rRoot, tRoot = rootOf(rider), rootOf(target)
+	if not onDragon(rider) or not active[target] or not rRoot or not tRoot then return end
+	if (rRoot.Position - tRoot.Position).Magnitude > (Config.DragonLockRange or 250) then return end
+	locks[rider] = target
+	local v = rider:FindFirstChild("DragonLock")
+	if not v then
+		v = Instance.new("ObjectValue")
+		v.Name = "DragonLock"
+		v.Parent = rider
 	end
-	a.seen = now
-	local need = Config.DragonLockTime or 1
-	rider:SetAttribute("LockProgress", math.min(1, a.t / need))
-	setValue(rider, "DragonLocking", target)
-	if a.t >= need then
-		stopAcquiring(rider)
-		locks[rider] = target
-		setValue(rider, "DragonLock", target)
-	end
+	v.Value = target
 end
 
 local function boom(pos, color)
@@ -204,10 +176,7 @@ end
 local tickAt = 0
 RunService.Heartbeat:Connect(function()
 	local now = os.clock()
-	-- riders: lost the lock / still acquiring / rammed them
-	for rider, a in pairs(acquiring) do
-		if now - a.seen > 0.45 or not rider.Parent then stopAcquiring(rider) end
-	end
+	-- riders: lost the lock / rammed them
 	for rider, target in pairs(locks) do
 		local rRoot, tRoot = rootOf(rider), rootOf(target)
 		if not rider.Parent or not onDragon(rider) or not active[target] or not rRoot or not tRoot then
@@ -257,6 +226,35 @@ RunService.Heartbeat:Connect(function()
 		end
 	end
 end)
+
+----------------------------------------------------------------------------------------
+-- bots that Shatterspin round in a circle (whenever they can), to practise the counter on
+----------------------------------------------------------------------------------------
+
+function Shatter.spawnBot(center, name, radius)
+	local Bots = require(script.Parent:WaitForChild("SpinjitzuBots"))
+	local bot = Bots.make("Fire", center, name or "SpinjitzuBot_Shatter")
+	local hum = bot:FindFirstChildOfClass("Humanoid")
+	hum.DisplayName = "Shatterspin Bot"
+	local root = bot:FindFirstChild("HumanoidRootPart")
+	local y = root.Position.Y
+	local ang, r = math.random() * math.pi * 2, radius or 12
+	local conn
+	conn = RunService.Heartbeat:Connect(function(dt)
+		if not bot.Parent then
+			conn:Disconnect()
+			return
+		end
+		if not bot:GetAttribute("Shatterspin") then
+			if (bot:GetAttribute("ShatterReady") or 0) <= workspace:GetServerTimeNow() then Shatter.start(bot, hum) end
+			return
+		end
+		ang += dt * 9 / r
+		root.CFrame = CFrame.new(center.X + math.cos(ang) * r, y, center.Z + math.sin(ang) * r)
+	end)
+	bot.Destroying:Connect(function() active[bot] = nil end)
+	return bot
+end
 
 Players.PlayerRemoving:Connect(function(player)
 	if player.Character then

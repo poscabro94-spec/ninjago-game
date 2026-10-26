@@ -1,4 +1,4 @@
--- SpinjitzuElements v3.0  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuElements v3.1  (ModuleScript in ReplicatedStorage)
 -- Element-specific extras for the Spinjitzu tornado: Lightning arcs, Earth rock particles +
 -- faint dust, Ice frost, Shatterspin's red + black swarm, and the matching spark styles. Used by
 -- SpinjitzuEffect.
@@ -158,7 +158,8 @@ local function boltPath(fx, b, s)
 	local low = rng:NextNumber() < 0.7
 	local h = low and rng:NextNumber(0.02, 0.45) or rng:NextNumber(0.45, 1)
 	local a = rng:NextNumber(0, TAU)
-	local r = fx:_radius(h) * s
+	local reach = b.reach or 1 -- (>1: bolts out in the air round it, not just on the funnel)
+	local r = fx:_radius(h) * s * reach + (reach > 1 and rng:NextNumber(0, 4) * s or 0)
 	local out = Vector3.new(math.cos(a), 0, math.sin(a))
 	local tan = Vector3.new(-math.sin(a), 0, math.cos(a))
 	local vert = low and rng:NextNumber(-1, 0.3) or rng:NextNumber(-0.3, 1)
@@ -168,7 +169,7 @@ local function boltPath(fx, b, s)
 	side = side.Unit
 	b.start = out * r + Vector3.new(0, h * fx.height * s, 0)
 	b.dir, b.side, b.up = dir, side, side:Cross(dir).Unit
-	b.len = rng:NextNumber(2.2, 4.5) * s
+	b.len = rng:NextNumber(2.2, 4.5) * s * reach
 	b.s = s
 end
 
@@ -189,7 +190,7 @@ local function boltJitter(fx, b)
 end
 
 -- thin jagged lightning bolts that flicker on and off around the funnel (core colour, glow colour)
-local function addBolts(fx, count, core, glowCol, widthMul)
+local function addBolts(fx, count, core, glowCol, widthMul, reach)
 	local rng = fx.rng
 	local bolts = {}
 	for _ = 1, count do
@@ -212,7 +213,7 @@ local function addBolts(fx, count, core, glowCol, widthMul)
 				Color = ColorSequence.new(glowCol), Transparency = NumberSequence.new(0.55), Enabled = false,
 			}, fx.basePart), 0.3 })
 		end
-		table.insert(bolts, { pts = pts, beams = beams, on = false, t = rng:NextNumber(0, 0.3), jit = 0 })
+		table.insert(bolts, { pts = pts, beams = beams, on = false, t = rng:NextNumber(0, 0.3), jit = 0, reach = reach })
 	end
 
 	local active = false
@@ -616,6 +617,110 @@ function Elements.Build.shatter(fx)
 	addDebris(fx, {
 		count = 10, sizeMin = 0.2, sizeMax = 0.5, shard = true, material = Enum.Material.Neon,
 		colors = { c, hi }, hMin = 0.1, hMax = 0.95, rMin = 1.05, rMax = 1.5,
+	})
+
+	------------------------------------------------------------------------------------
+	-- ... and all AROUND it: a wide storm of streaks, ash, embers, smoke, sparks, bolts in the air
+	-- and rocks, a red glow + scorch on the floor with shockwaves rippling out
+	------------------------------------------------------------------------------------
+
+	-- the outer storm: streaks whipping round far out from the funnel
+	for i = 1, 12 do
+		local y = rng:NextNumber(0.3, 12) * s
+		local sp = fx:_spinner("Storm", rng:NextNumber(0.45, 0.8), 0.5)
+		for k = 1, 3 do
+			local a = (k / 3 + rng:NextNumber(0, 0.15)) * TAU
+			local r = rng:NextNumber(7, 15) * s
+			local pos = Vector3.new(math.cos(a) * r, y, math.sin(a) * r)
+			local radial = Vector3.new(math.cos(a), 0, math.sin(a))
+			local along = Vector3.new(-math.sin(a), 0, math.cos(a)) * fx.dir
+			local att = fx:_attach(sp.part, nil, CFrame.fromMatrix(pos, radial, (along + radial * 0.15 + Vector3.yAxis * rng:NextNumber(-0.15, 0.25)).Unit))
+			local red = (i + k) % 3 ~= 0
+			fx:_emitter(att, {
+				Texture = TEX_SPARK, EmissionDirection = Enum.NormalId.Top,
+				Orientation = Enum.ParticleOrientation.VelocityParallel,
+				Color = red and ColorSequence.new(WHITE:Lerp(hi, 0.5), c) or ColorSequence.new(black),
+				LightEmission = red and 1 or 0, Brightness = red and 4 or 1,
+				Size = NumberSequence.new({ kp(0, 0.35 * s), kp(1, 0.12 * s) }),
+				Squash = NumberSequence.new(red and 8 or 5),
+				Transparency = NumberSequence.new({ kp(0, 0), kp(0.6, 0.2), kp(1, 1) }),
+				Lifetime = NumberRange.new(0.3, 0.6), Rate = (red and 22 or 14) * d,
+				Speed = NumberRange.new(45 * s, 80 * s), SpreadAngle = Vector2.new(12, 12), Drag = 1,
+			})
+		end
+	end
+
+	-- the air all round it full of black ash, red embers, dark smoke and flashing sparks
+	local air = fx:_spinner("Air", 0.1, 0.5, nil, 6.5)
+	air.part.Size = Vector3.new(34, 13, 34) * s
+	local airFx = {
+		{ -- black ash
+			Texture = TEX_SPARK, Color = ColorSequence.new(black), LightEmission = 0, Brightness = 1,
+			Size = NumberSequence.new({ kp(0, 0.3 * s), kp(1, 0.15 * s) }),
+			Transparency = NumberSequence.new({ kp(0, 1), kp(0.15, 0), kp(0.8, 0.1), kp(1, 1) }),
+			Lifetime = NumberRange.new(1, 2), Rate = 70 * d, Speed = NumberRange.new(2 * s, 7 * s),
+			SpreadAngle = Vector2.new(180, 180), Acceleration = Vector3.new(0, 3, 0), Drag = 0.8,
+			Rotation = NumberRange.new(0, 360), RotSpeed = NumberRange.new(-200, 200),
+		},
+		{ -- red embers drifting up
+			Texture = TEX_SPARK, Color = ColorSequence.new(WHITE:Lerp(hi, 0.4), c), LightEmission = 1, Brightness = 4,
+			Size = NumberSequence.new({ kp(0, 0.3 * s), kp(1, 0) }),
+			Lifetime = NumberRange.new(0.8, 1.6), Rate = 60 * d, Speed = NumberRange.new(1 * s, 4 * s),
+			SpreadAngle = Vector2.new(180, 180), Acceleration = Vector3.new(0, 5, 0), Drag = 0.5,
+		},
+		{ -- dark smoke hanging round it
+			Texture = TEX_SMOKE, Color = ColorSequence.new(black, deep), LightEmission = 0, Brightness = 1,
+			Size = NumberSequence.new({ kp(0, 4 * s), kp(1, 8 * s) }),
+			Transparency = NumberSequence.new({ kp(0, 1), kp(0.3, 0.6), kp(1, 1) }),
+			Lifetime = NumberRange.new(1.5, 2.5), Rate = 9 * d, Speed = NumberRange.new(0.5 * s, 2 * s),
+			SpreadAngle = Vector2.new(180, 180), Rotation = NumberRange.new(0, 360), RotSpeed = NumberRange.new(-30, 30),
+		},
+		{ -- red flashes popping in the air
+			Texture = TEX_SPARK, Color = ColorSequence.new(WHITE:Lerp(hi, 0.3)), LightEmission = 1, Brightness = 5,
+			Size = NumberSequence.new({ kp(0, 0.9 * s), kp(1, 0) }),
+			Lifetime = NumberRange.new(0.08, 0.18), Rate = 30 * d, Speed = NumberRange.new(0),
+			Rotation = NumberRange.new(0, 360),
+		},
+	}
+	for _, props in ipairs(airFx) do fx:_emitter(air.part, props) end
+
+	-- bolts crackling out in the air round it, and rocks torn up and whirled far out
+	addBolts(fx, 14, WHITE:Lerp(Color3.fromRGB(255, 120, 200), 0.35), c, 1.6, 2.4)
+	addDebris(fx, {
+		count = 16, sizeMin = 0.4, sizeMax = 1.1, material = Enum.Material.Basalt,
+		colors = { Color3.fromRGB(20, 18, 20), Color3.fromRGB(45, 10, 12), Color3.fromRGB(30, 28, 30) },
+		hMin = 0.25, hMax = 0.8, rMin = 1.8, rMax = 2.9,
+	})
+
+	-- the floor: a red glow under it, a scorched ring round that, shockwaves rippling out
+	local function flat(radius, inner, color, alpha, y)
+		local ad = make("CylinderHandleAdornment", {
+			Adornee = fx.basePart, Radius = radius, InnerRadius = inner, Height = 0.05, Color3 = color,
+			Transparency = 1, AlwaysOnTop = false, ZIndex = 0, CFrame = CFrame.new(0, y, 0) * CFrame.Angles(math.pi / 2, 0, 0),
+		}, fx.basePart)
+		return { ad = ad, alpha = alpha, radius = radius, inner = inner }
+	end
+	local glow = flat(9, 0, c, 0.55, 0.06)
+	local core = flat(4, 0, WHITE:Lerp(hi, 0.5), 0.5, 0.08)
+	local scorch = flat(15, 8.5, black, 0.45, 0.05)
+	local ripples = {}
+	for i = 1, 4 do ripples[i] = flat(3, 2.6, i % 2 == 0 and black or c, 0.15, 0.1 + i * 0.01) end
+	local on = false -- (after the windup; when it stops they shrink + fade with the tornado)
+	install(fx, {
+		begin = function() on = true end,
+		update = function(fx2, _, _, s2, t)
+			local vis = on and math.clamp(s2, 0, 1) or 0
+			for _, f in ipairs({ glow, core, scorch }) do
+				f.ad.Transparency = 1 - (1 - f.alpha) * vis * (0.9 + 0.1 * math.sin(t * 9))
+				f.ad.Radius, f.ad.InnerRadius = f.radius * fx2.size, f.inner * fx2.size
+			end
+			for i, r in ipairs(ripples) do
+				local k = (t / 0.9 + i / #ripples) % 1
+				local rad = (2 + k * 16) * fx2.size
+				r.ad.Radius, r.ad.InnerRadius = rad, rad - 0.5 * fx2.size
+				r.ad.Transparency = 1 - (1 - r.alpha) * (1 - k) * vis
+			end
+		end,
 	})
 end
 

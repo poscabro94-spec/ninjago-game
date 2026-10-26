@@ -1,4 +1,4 @@
--- SpinjitzuConfig v16.0  (ModuleScript in ReplicatedStorage)
+-- SpinjitzuConfig v16.1  (ModuleScript in ReplicatedStorage)
 
 local Config = {}
 
@@ -105,8 +105,9 @@ Config.DragonRiseTime = 3       -- seconds going straight up before you can move
 Config.DragonRiseHeight = 35    -- studs it rises in that time
 Config.DragonFlySpeed = 50      -- studs/s
 Config.DragonBoost = 1.9        -- holding Shift while flying: this many times faster
-Config.DragonFlyTime = 6        -- seconds of flight after the rise, then you land
-Config.DragonLockTime = 1       -- seconds your beam must stay on a Shatterspinner to lock on
+Config.DragonFlyTime = 9        -- seconds of flight after the rise, then you dive straight down + land
+Config.DragonLockKey = Enum.KeyCode.C -- on the dragon: lock onto the Shatterspinner nearest the middle of your screen (again = let go)
+Config.DragonLockRange = 250    -- studs
 Config.DragonRamRange = 9       -- studs: locked on and this close = you hit them (Shatterspin broken)
 Config.DragonUpKey = Enum.KeyCode.Space
 Config.DragonDownKey = Enum.KeyCode.LeftControl
@@ -117,7 +118,8 @@ Config.DragonFlapSpeed = 6      -- wing beat speed while flying
 Config.DragonBot = true         -- a bot that demos the dragon on a loop
 
 -- Shatterspin (X): red + black destructive Spinjitzu. Hurts + throws whoever it touches, flings loose
--- things, and nothing can hurt you while it's on. Countered only by a Rising Dragon (lock on + ram).
+-- things, and nothing can hurt you while it's on. Countered only by a Rising Dragon (lock on with C,
+-- then fly into them). Spawn bots that do it from the menu (Bots page).
 Config.ShatterKey = Enum.KeyCode.X
 Config.ShatterTime = 8              -- seconds it lasts
 Config.ShatterCooldown = 12         -- seconds before you can do it again
@@ -126,7 +128,7 @@ Config.ShatterSpeed = 2.6           -- walk speed multiplier
 Config.ShatterRadius = 10           -- studs it reaches
 Config.ShatterDamage = 9            -- per hit (each thing it touches gets hit twice a second)
 Config.ShatterCounterDamage = 40    -- the dragon's ram
-Config.ShatterBot = true            -- a bot that Shatterspins in a circle (practise the counter)
+Config.ShatterBot = true            -- a bot near spawn that Shatterspins in a circle (practise the counter)
 
 -- Tornado of Creation (T): needs 4 players close together on Fire, Earth, Lightning and Ice.
 -- They start Spinjitzu in this order, come together and merge into one huge tornado.

@@ -60,26 +60,10 @@ if Config.CreationBot then
 end
 
 -- Shatterspin bot: Shatterspins round in a circle (whenever it can), so you can practise the
--- counter: on the dragon, hold your beam on it for a second to lock on, then fly into it
+-- counter: on the dragon, press the lock key (C) to lock on, then fly into it
 if Config.ShatterBot then
 	local Shatter = require(script.Parent:WaitForChild("Shatterspin"))
-	local home = origin + Vector3.new(45, 0, 35)
-	local sbot = makeBot("Fire", home, "SpinjitzuBot_Shatter")
-	local hum = sbot:FindFirstChildOfClass("Humanoid")
-	hum.DisplayName = "Shatterspin Bot"
-	local root = sbot:FindFirstChild("HumanoidRootPart")
-	local y = root.Position.Y
-	local ang = 0
-	game:GetService("RunService").Heartbeat:Connect(function(dt)
-		if not sbot.Parent then return end
-		if not sbot:GetAttribute("Shatterspin") then
-			if (sbot:GetAttribute("ShatterReady") or 0) <= workspace:GetServerTimeNow() then Shatter.start(sbot, hum) end
-			return
-		end
-		ang += dt * 0.9
-		local p = Vector3.new(home.X + math.cos(ang) * 14, y, home.Z + math.sin(ang) * 14)
-		root.CFrame = CFrame.new(p)
-	end)
+	Shatter.spawnBot(origin + Vector3.new(45, 0, 35))
 end
 
 -- Dragon demo bot: spin -> rises straight up with the dragon -> flies a loop -> lands, on repeat

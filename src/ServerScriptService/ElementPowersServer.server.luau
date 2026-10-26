@@ -19,7 +19,6 @@ local TimeZones = require(ReplicatedStorage:WaitForChild("TimeZones"))
 local Config = require(ReplicatedStorage:WaitForChild("SpinjitzuConfig"))
 local HitEffects = require(script.Parent:WaitForChild("HitEffects"))
 local Status = require(script.Parent:WaitForChild("StatusEffects"))
-local Shatter = require(script.Parent:WaitForChild("Shatterspin"))
 local Bots = require(script.Parent:WaitForChild("SpinjitzuBots"))
 local TrainingDummy = require(script.Parent:WaitForChild("TrainingDummy"))
 local TAU = math.pi * 2
@@ -832,8 +831,6 @@ RunService.Heartbeat:Connect(function(dt)
 					params.FilterDescendantsInstances = { character }
 					local hit = workspace:Spherecast(origin, P.BeamRadius, dir.Unit * TimeZones.clip(origin, dir.Unit, P.BeamRange), params)
 					local model = hit and hit.Instance:FindFirstAncestorOfClass("Model")
-					-- (a Shatterspinner takes nothing from it, but a dragon rider's beam locks on)
-					if model and model:GetAttribute("Shatterspin") then Shatter.beamTick(character, model, P.BeamTick) end
 					local hum = hit and Status.target(model, character)
 					if hum then beamHit(b, P, model, hum, now, dir.Unit) end
 				end

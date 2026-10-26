@@ -94,7 +94,7 @@ local function startDragon(player, character, humanoid)
 	end)
 end
 
-remote.OnServerEvent:Connect(function(player, action)
+remote.OnServerEvent:Connect(function(player, action, value)
 	local character = player.Character
 	if not character then return end
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
@@ -155,6 +155,15 @@ remote.OnServerEvent:Connect(function(player, action)
 
 	if action == "landed" then
 		landed(character)
+		return
+	end
+
+	if action == "lock" then -- (value = the Shatterspinner to lock onto, nil = let go)
+		if typeof(value) == "Instance" and value:IsA("Model") then
+			Shatter.lockOn(character, value)
+		else
+			Shatter.unlock(character)
+		end
 		return
 	end
 
