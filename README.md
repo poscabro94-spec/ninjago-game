@@ -13,6 +13,18 @@ All the scripts from `Place1.rbxl`, laid out for [Rojo](https://rojo.space) so t
 
 File endings: `.server.luau` = Script, `.client.luau` = LocalScript, `.luau` = ModuleScript.
 
+## Spinjitzu sounds (`tools/`)
+
+`tools/spinjitzu-sounds.ps1` turns the Spinjitzu videos in `Videos` into `<Element> Start.ogg`, `<Element> Loop.ogg` (a seamless loop) and `<Element> End.ogg` in `Downloads\Spinjitzu Sounds`. You need ffmpeg (`winget install Gyan.FFmpeg`). Run it from this folder:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\spinjitzu-sounds.ps1 -FullOnly   # optional: each full soundtrack, to find cut points
+powershell -ExecutionPolicy Bypass -File tools\spinjitzu-sounds.ps1             # cut all six
+powershell -ExecutionPolicy Bypass -File tools\spinjitzu-sounds.ps1 -Only Ice   # redo one after changing its times
+```
+
+The cut points (in seconds) go in `tools/spinjitzu-cuts.csv`: `ClipStart` (wind-up begins), `LoopStart` / `LoopEnd` (the steady spinning part) and `ClipEnd` (the stop sound has died out). Leave a cell blank and the script guesses it from where the sound starts and stops. Then check `cuts used.txt` and adjust the times.
+
 ## Syncing with Studio
 
 1. Install the Rojo plugin in Studio and the Rojo CLI (`aftman`, `rokit` or the release from GitHub).
