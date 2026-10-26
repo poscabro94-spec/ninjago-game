@@ -1,12 +1,16 @@
--- ElementPowers v1.2  (ModuleScript in ReplicatedStorage)
--- Elemental powers, used with empty hands (no Golden Weapon out). For now: Lightning.
---   tap left click:    lightning ball from the right hand -> the left hand -> a big one from
---                      both hands that explodes
---   hold left click:   both hands out, a beam from each meets in front of you and one big
---                      beam goes on to where you aim
+-- ElementPowers v2.0  (ModuleScript in ReplicatedStorage)
+-- Elemental powers, used with empty hands (no Golden Weapon out): Lightning, Fire, Ice, Earth.
+--   tap left click:    a shot from the right hand -> the left hand -> a big one from both hands
+--   hold left click:   both hands out, a beam from each meets in front of you and one big beam
+--                      goes on to where you aim
+--   Lightning  balls; the big one explodes + electrocutes (3s x 5)       | lightning beam
+--   Fire       fireballs; the big one explodes + sets them burning (3s x 5) | flamethrower, burns
+--   Ice        ice shards; the big one freezes them in ice up to the neck  | frost beam, freezes
+--                                                                           after 5s on someone
+--   Earth      rocks; the third is an earth wave along the ground          | sand blast, pushes back
 -- Settings + the arm poses (NinjaAnimator calls Step every frame, on every client).
--- The server (ElementPowersServer) sets these attributes on the character:
---   PowerMove + PowerId (a throw started), PowerBeam (beam on), PowerAim (where it points)
+-- The server (ElementPowersServer) sets these attributes on the character: PowerElement,
+--   PowerMove + PowerId (a shot started), PowerBeam (beam on), PowerAim (where it points)
 
 local Players = game:GetService("Players")
 
@@ -14,33 +18,118 @@ local Powers = {}
 
 Powers.DemoBot = true -- a Lightning bot behind the Lightning Spinjitzu bot that shows the powers on a loop
 Powers.LocalAim = nil -- set every frame by ElementPowersClient while you beam: your arms follow your mouse
+Powers.HoldTime = 0.22 -- hold left click this long and it's the beam instead of a shot
 
+local THROW = "rbxassetid://9114276859"
+local HITS = { "rbxassetid://115899453415449", "rbxassetid://77794845234498" }
+local BOOM = "rbxassetid://73278613369675"
+local ZAP = "rbxassetid://9114277757"
+
+-- shared shape of the combo: right, left, both hands (the third one is each element's own)
+local function combo(damage, size, third)
+	third.name, third.time, third.release, third.hands = "ballBoth", third.time or 0.6, third.release or 0.55, "B"
+	third.final = true
+	return {
+		{ name = "ballR", time = 0.35, release = 0.45, damage = damage, size = size, hands = "R" },
+		{ name = "ballL", time = 0.35, release = 0.45, damage = damage, size = size, hands = "L" },
+		third,
+	}
+end
+
+-- Shot = how the shots look (lightning / fire / ice / rock). Status on the third shot:
+-- "shock" / "burn" (StatusTime seconds, StatusDamage each second), "freeze" (FreezeTime).
+-- Beam: BeamStatus "burn" / "freeze" (after FreezeAfter seconds on the same target) / "push".
+-- BeamStyle: colours of the beam's core / glow / haze, crackling arcs, a particle stream.
 Powers.Lightning = {
+	Shot = "lightning",
 	Color = Color3.fromRGB(90, 200, 255),
 	CoreColor = Color3.fromRGB(235, 250, 255),
 	HitColor = Color3.fromRGB(90, 200, 255),
 	HitTextColor = Color3.fromRGB(150, 215, 255),
-	Sounds = {
-		Throw = "rbxassetid://9114276859",
-		Hit = { "rbxassetid://115899453415449", "rbxassetid://77794845234498" },
-		Final = "rbxassetid://73278613369675",
-		Zap = "rbxassetid://9114277757",
-		BeamLoop = "",            -- optional: a looping electric hum (asset id); "" = crackling zaps instead
-	},
+	Sounds = { Throw = THROW, Hit = HITS, Final = BOOM, Zap = ZAP,
+		BeamLoop = "" }, -- optional: a looping electric hum (asset id); "" = crackling zaps instead
 	BallSpeed = 110,              -- studs/s
 	BallRange = 160,              -- studs before it fizzles out
 	ComboWindow = 1.2,            -- seconds to click again to continue
-	Balls = {
-		{ name = "ballR",    time = 0.35, release = 0.45, damage = 10, size = 1.1, hands = "R" },
-		{ name = "ballL",    time = 0.35, release = 0.45, damage = 10, size = 1.1, hands = "L" },
-		{ name = "ballBoth", time = 0.6,  release = 0.55, damage = 26, size = 2.6, hands = "B", blast = 9, final = true },
-	},
-	HoldTime = 0.22,              -- hold left click this long and it's the beam instead of a ball
+	Balls = combo(10, 1.1, { damage = 26, size = 2.6, blast = 9, status = "shock" }),
+	StatusTime = 3, StatusDamage = 5,
 	BeamRange = 70,               -- studs
 	BeamDamage = 4,               -- per tick
 	BeamTick = 0.15,              -- seconds between damage ticks
 	BeamRadius = 0.9,             -- how thick the beam is for hitting
+	BeamStyle = { core = Color3.fromRGB(235, 250, 255), glow = Color3.fromRGB(90, 200, 255), haze = Color3.fromRGB(90, 200, 255),
+		arcs = true, crackle = true },
 }
+
+Powers.Fire = {
+	Shot = "fire",
+	Color = Color3.fromRGB(255, 110, 20),
+	CoreColor = Color3.fromRGB(255, 230, 140),
+	HitColor = Color3.fromRGB(255, 120, 25),
+	HitTextColor = Color3.fromRGB(255, 190, 90),
+	Sounds = { Throw = THROW, Hit = HITS, Final = BOOM },
+	BallSpeed = 95,
+	BallRange = 140,
+	ComboWindow = 1.2,
+	Balls = combo(10, 1.3, { damage = 24, size = 3, blast = 10, status = "burn" }),
+	StatusTime = 3, StatusDamage = 5,
+	BeamRange = 30,               -- a flamethrower doesn't reach far
+	BeamDamage = 2,
+	BeamTick = 0.15,
+	BeamRadius = 1.6,
+	BeamStatus = "burn",          -- keeps them burning while it's on them
+	BeamStyle = { core = Color3.fromRGB(255, 240, 160), glow = Color3.fromRGB(255, 140, 30), haze = Color3.fromRGB(220, 50, 10),
+		stream = { texture = "rbxasset://textures/particles/fire_main.dds", from = Color3.fromRGB(255, 220, 90),
+			to = Color3.fromRGB(230, 50, 10), size = 1.4, speed = 45 } },
+}
+
+Powers.Ice = {
+	Shot = "ice",
+	Color = Color3.fromRGB(150, 225, 255),
+	CoreColor = Color3.fromRGB(240, 252, 255),
+	HitColor = Color3.fromRGB(120, 210, 255),
+	HitTextColor = Color3.fromRGB(180, 235, 255),
+	Sounds = { Throw = THROW, Hit = HITS, Final = BOOM },
+	BallSpeed = 120,
+	BallRange = 160,
+	ComboWindow = 1.2,
+	Balls = combo(10, 1.0, { damage = 18, size = 2.2, status = "freeze" }),
+	FreezeTime = 2.5,             -- seconds frozen (ice up to the neck, can't move)
+	BeamRange = 60,
+	BeamDamage = 3,
+	BeamTick = 0.15,
+	BeamRadius = 1.0,
+	BeamStatus = "freeze",
+	FreezeAfter = 5,              -- seconds the beam has to stay on someone before they freeze
+	BeamStyle = { core = Color3.fromRGB(245, 253, 255), glow = Color3.fromRGB(150, 225, 255), haze = Color3.fromRGB(200, 240, 255),
+		stream = { texture = "rbxasset://textures/particles/sparkles_main.dds", from = Color3.fromRGB(255, 255, 255),
+			to = Color3.fromRGB(150, 225, 255), size = 0.5, speed = 50 } },
+}
+
+Powers.Earth = {
+	Shot = "rock",
+	Color = Color3.fromRGB(190, 140, 75),
+	CoreColor = Color3.fromRGB(235, 200, 140),
+	HitColor = Color3.fromRGB(230, 150, 60),
+	HitTextColor = Color3.fromRGB(255, 205, 130),
+	RockColor = Color3.fromRGB(115, 82, 50),
+	Sounds = { Throw = THROW, Hit = HITS, Final = BOOM },
+	BallSpeed = 85,
+	BallRange = 120,
+	ComboWindow = 1.2,
+	-- the third: rocks burst out of the ground in a line toward the aim, throwing everyone up
+	Balls = combo(12, 1.4, { damage = 22, size = 0, wave = { length = 40, step = 2.5, radius = 4, up = 48 }, time = 0.6 }),
+	BeamRange = 35,
+	BeamDamage = 2,
+	BeamTick = 0.15,
+	BeamRadius = 2.2,
+	BeamStatus = "push",          -- the sand pushes them back
+	BeamStyle = { core = Color3.fromRGB(235, 205, 150), glow = Color3.fromRGB(200, 150, 85), haze = Color3.fromRGB(160, 115, 65),
+		stream = { texture = "rbxasset://textures/particles/smoke_main.dds", from = Color3.fromRGB(225, 190, 130),
+			to = Color3.fromRGB(150, 105, 60), size = 3, speed = 40 } },
+}
+
+Powers.ByElement = { Lightning = Powers.Lightning, Fire = Powers.Fire, Ice = Powers.Ice, Earth = Powers.Earth }
 
 ----------------------------------------------------------------------------------------
 -- arm poses (NinjaAnimator convention: +x swings a hanging arm forward, +z swings the
@@ -72,8 +161,8 @@ end
 
 local states = setmetatable({}, { __mode = "k" }) -- [character] = { id, move, t }
 
-local function ballFor(name)
-	for _, b in ipairs(Powers.Lightning.Balls) do
+local function ballFor(P, name)
+	for _, b in ipairs(P and P.Balls or {}) do
 		if b.name == name then return b end
 	end
 	return nil
@@ -89,7 +178,7 @@ function Powers.Step(character, root, pose, dt, armsFree)
 	local id = character:GetAttribute("PowerId") or 0
 	if id ~= st.id then
 		st.id = id
-		st.move, st.t = ballFor(character:GetAttribute("PowerMove") or ""), 0
+		st.move, st.t = ballFor(Powers.ByElement[character:GetAttribute("PowerElement") or ""], character:GetAttribute("PowerMove") or ""), 0
 	end
 	if not armsFree then return pose end
 

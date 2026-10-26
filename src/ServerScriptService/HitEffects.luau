@@ -1,4 +1,4 @@
--- HitEffects v1.0  (ModuleScript in ServerScriptService)
+-- HitEffects v1.1  (ModuleScript in ServerScriptService)
 -- What a hit looks like: sounds, a flash in the attacker's colour, sparks and a floating damage
 -- number. Used by the Golden Weapons and the elemental powers.
 
@@ -16,17 +16,20 @@ local function sound(parent, id, vol)
 end
 
 -- W: settings with HitColor, HitTextColor, Sounds { Hit = {...}, Final, Zap? } and optional
--- BurnTime + FlameColor (the final hit sets them on fire)
-function HitEffects.show(W, targetRoot, model, dmg, final)
-	if W.Sounds.Zap then
+-- BurnTime + FlameColor (the final hit sets them on fire). quiet = only the number and a short
+-- flash (damage over time ticks)
+function HitEffects.show(W, targetRoot, model, dmg, final, quiet)
+	if not quiet and W.Sounds.Zap then
 		local zap = sound(targetRoot, W.Sounds.Zap, 0.25)
 		zap.PlaybackSpeed = 1 + math.random() * 0.25
 		zap:Play()
 		Debris:AddItem(zap, 3)
 	end
-	local thud = sound(targetRoot, final and W.Sounds.Final or W.Sounds.Hit[math.random(1, #W.Sounds.Hit)], 0.8)
-	thud:Play()
-	Debris:AddItem(thud, 4)
+	if not quiet then
+		local thud = sound(targetRoot, final and W.Sounds.Final or W.Sounds.Hit[math.random(1, #W.Sounds.Hit)], 0.8)
+		thud:Play()
+		Debris:AddItem(thud, 4)
+	end
 	if final and W.BurnTime then
 		local fire = Instance.new("Fire")
 		fire.Heat, fire.Size = 8, 4
@@ -43,6 +46,10 @@ function HitEffects.show(W, targetRoot, model, dmg, final)
 	hl.Parent = model
 	Debris:AddItem(hl, 0.15)
 
+	if quiet then
+		HitEffects.number(W, targetRoot, dmg)
+		return
+	end
 	local a = Instance.new("Attachment")
 	a.Parent = targetRoot
 	local pe = Instance.new("ParticleEmitter")
@@ -63,7 +70,11 @@ function HitEffects.show(W, targetRoot, model, dmg, final)
 	task.delay(0.12, function() pe.Enabled = false light.Enabled = false end)
 	Debris:AddItem(a, 1)
 
-	-- floating damage number
+	HitEffects.number(W, targetRoot, dmg)
+end
+
+-- floating damage number
+function HitEffects.number(W, targetRoot, dmg)
 	local gui = Instance.new("BillboardGui")
 	gui.Size = UDim2.fromOffset(80, 36)
 	gui.StudsOffset = Vector3.new(math.random() * 2 - 1, 2.5, 0)
